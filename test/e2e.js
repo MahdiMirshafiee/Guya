@@ -17,7 +17,19 @@ const path = require('path');
 const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
+const i18n = require('../src/shared/i18n.js');
+/* The header carries the app's name in whichever language the window is in. The
+ * test does not care which, only that it is the name and not a task sentence. */
+const APP_TITLES = ['fa', 'en'].map((lang) => i18n.t(lang, 'ui.title'));
 const PORT = 9300 + Math.floor(Math.random() * 500);
+
+/* The harness drives the app over the DevTools protocol with the global
+ * WebSocket, which only exists from Node 22 — say so here rather than dying three
+ * frames deep in the connection code. */
+if (typeof WebSocket !== 'function') {
+  console.error(`Guya's e2e needs Node 22 or newer (this is ${process.version}); it talks to the app over the DevTools protocol.`);
+  process.exit(1);
+}
 const PROFILE = fs.mkdtempSync(path.join(os.tmpdir(), 'guya-e2e-'));
 const LOG = path.join(PROFILE, 'app.log');
 
@@ -178,8 +190,10 @@ class Cdp {
 
   console.log('\n1. idle');
   check('two views, recorder first', (await panel.eval('document.body.dataset.view')) === 'recorder');
-  check('title is the task, not the app', /دیکته/.test(await panel.eval(`document.querySelector('.nav-title').textContent`)),
+  check('the header names the app', APP_TITLES.indexOf(await panel.eval(`document.querySelector('.nav-title').textContent`)) !== -1,
     await panel.eval(`document.querySelector('.nav-title').textContent`));
+  check('and so does the window', APP_TITLES.indexOf(await panel.eval('document.title')) !== -1,
+    await panel.eval('document.title'));
   check('an unconfigured app says what is missing', /کلید/.test(await el('status')), await el('status'));
   check('timer starts at 0:00', (await el('timer')) === '0:00', await el('timer'));
   check('waveform sits at its baseline', Math.max.apply(null, await waveBars()) <= 8);
@@ -281,6 +295,19 @@ class Cdp {
   await panel.eval(`document.getElementById('openSettings').click()`);
   await sleep(400);
   check('settings is the pushed view', (await panel.eval('document.body.dataset.view')) === 'settings');
+  /* The back control was 76px into the window when the toolbar reserved a column
+   * for the window buttons. It belongs on the leading edge, and the window buttons
+   * — which appear over the top-left corner on hover — get a band above the row. */
+  const back = await panel.eval(`(() => {
+    const b = document.getElementById('closeSettings').getBoundingClientRect();
+    const nav = document.querySelector('#view-settings .navbar').getBoundingClientRect();
+    return { left: b.left, top: b.top, right: b.right, navLeft: nav.left, navRight: nav.right, navTop: nav.top,
+             mac: document.body.classList.contains('is-mac'), dir: document.documentElement.dir };
+  })()`);
+  /* In Persian the leading edge is the right one; the control follows the language. */
+  const leading = back.dir === 'rtl' ? back.navRight - back.right : back.left - back.navLeft;
+  check('the back control sits on the leading edge', leading < 24, JSON.stringify(back));
+  check('and below the band the window buttons use', !back.mac || back.top - back.navTop >= 30, JSON.stringify(back));
   check('the model picker is populated', (await panel.eval(`document.getElementById('modelSelect').options.length`)) > 1);
   check('the spoken-language picker is populated', (await panel.eval(`document.getElementById('language').options.length`)) > 5);
   check('the silence stop offers real choices', (await panel.eval(`document.getElementById('silenceStop').options.length`)) >= 4);
