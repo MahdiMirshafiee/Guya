@@ -93,12 +93,26 @@
   padding: var(--s2) 0;
 }
 
-.stack > label {
+.stack > label,
+.stack-head > label {
   display: block;
   margin-bottom: 2px;
   font-size: var(--text-caption);
   font-weight: 500;
   color: var(--text-2);
+}
+
+/* A field whose label shares its line with an action puts the label on the leading
+ * edge and the action on the trailing one, the way a row does. */
+.stack-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.stack-head > label {
+  margin-bottom: 0;
 }
 
 .stack-control {
@@ -127,7 +141,8 @@
   min-height: 44px;
 }
 
-.stack:focus-within > label {
+.stack:focus-within > label,
+.stack:focus-within .stack-head > label {
   color: var(--accent);
 }
 

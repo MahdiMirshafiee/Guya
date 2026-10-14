@@ -97,7 +97,7 @@
     'ui.apiKey': { fa: 'کلید API', en: 'API key' },
     'ui.model': { fa: 'مدل', en: 'Model' },
     'ui.spokenLanguage': { fa: 'زبان گفتار', en: 'Spoken language' },
-    'ui.prompt': { fa: 'دستور و زمینه', en: 'Instructions & context' },
+    'ui.prompt': { fa: 'پرامپت سیستم', en: 'System prompt' },
     'ui.shortcut': { fa: 'شورت‌کات ضبط', en: 'Recording shortcut' },
     'ui.copy': { fa: 'کپی در کلیپ‌بورد', en: 'Copy to clipboard' },
     'ui.paste': { fa: 'جای‌گذاری خودکار', en: 'Paste automatically' },
@@ -105,6 +105,7 @@
     'ui.lastTranscript': { fa: 'آخرین متن', en: 'Last transcript' },
     'ui.languageName': { fa: 'فارسی', en: 'English' },
     'ui.refreshModels': { fa: 'دریافت مدل‌ها', en: 'Refresh models' },
+    'ui.resetPrompt': { fa: 'بازگشت به پرامپت پیش‌فرض', en: 'Reset to the default prompt' },
     'ui.showKey': { fa: 'نمایش کلید', en: 'Show key' },
     'ui.hideKey': { fa: 'پنهان کردن کلید', en: 'Hide key' },
     'ui.copyTranscript': { fa: 'کپی متن', en: 'Copy transcript' },
@@ -145,8 +146,8 @@
       en: 'Audio is uploaded to the Gemini API and the transcript is returned. Guya has no server of its own.'
     },
     'settings.promptFootnote': {
-      fa: 'برای واژه‌های خاص و اصطلاحات فنی خودتان؛ اختیاری است.',
-      en: 'For your own vocabulary and technical terms. Optional.'
+      fa: 'همین متن با هر ضبط به مدل فرستاده می‌شود. انگلیسی است و می‌توانید عوضش کنید.',
+      en: 'This text is sent with every recording. It is in English, and yours to change.'
     },
     'settings.pasteFootnote': {
       fa: 'متن را در برنامه‌ای که باز است تایپ می‌کند.',

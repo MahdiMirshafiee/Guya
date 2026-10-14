@@ -16,6 +16,7 @@ const F = {
   refreshModels: document.getElementById('refreshModels'),
   language: document.getElementById('language'),
   prompt: document.getElementById('prompt'),
+  resetPrompt: document.getElementById('resetPrompt'),
   shortcut: document.getElementById('shortcut'),
   silenceStop: document.getElementById('silenceStop'),
   attempts: document.getElementById('attempts'),
@@ -186,6 +187,7 @@ function repaintSettings() {
 
   applyPasteSupport(pasteSupport);
   F.refreshModels.setAttribute('aria-label', t('ui.refreshModels'));
+  F.resetPrompt.setAttribute('aria-label', t('ui.resetPrompt'));
   renderLanguages();
   renderModels();
   renderShortcut();
@@ -367,6 +369,13 @@ function initSettings() {
   commitOnBlur(F.apiKey, checkKey);
   commitOnBlur(F.prompt);
   commitOnBlur(F.modelCustom, renderModels);
+
+  /* The field starts as the app's own instructions, and this is how they come back
+   * after an edit — otherwise a deleted sentence would be gone for good. */
+  on(F.resetPrompt, 'click', async () => {
+    F.prompt.value = GuyaPrompt.DEFAULT_PROMPT;
+    await saveAndRepaint({ prompt: F.prompt.value });
+  });
 
   on(F.language, 'change', () => saveAndRepaint());
   on(F.silenceStop, 'change', () => saveAndRepaint());
