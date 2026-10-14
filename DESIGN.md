@@ -2,8 +2,10 @@
 
 A local-first voice-to-text utility for macOS and Windows.
 
-Target: macOS 26 (Tahoe) · Windows 11 · Electron 44 · Chromium 140
-Design language: Apple Human Interface Guidelines + Liquid Glass, carried to Windows unchanged
+Target: macOS 26 (Tahoe) · Windows 11 · Linux (x64 and arm64) · Electron 44 · Chromium 140
+Design language: Apple Human Interface Guidelines + Liquid Glass, carried to the other
+two platforms unchanged — the material differs (vibrancy, acrylic, or a plain window),
+the interface does not.
 
 ---
 
@@ -331,6 +333,8 @@ Error strings are part of the design. Every failure maps to one of a small, fixe
 | No Save button; controls write through | A Save button and a dirty state | The system's own settings do not have one; a Save button invents a state the user can forget to resolve |
 | Model select + "Custom…" | Closed list, or a bare text field | Model names change faster than releases; both alternatives are worse for one of the two cases |
 | The transcript is plain text on the surface | A bordered textarea | The container adds a shape without adding information, and a disabled-looking field implies an action that is not there |
+| One interface on three systems | A native look per platform | The product is small enough that a second design language would cost more than it explains, and the guidelines it follows are about hierarchy and restraint rather than about macOS. Only the material and what the OS actually permits differ |
+| Automatic paste is disabled on Linux, with a sentence saying why | Offering a switch that cannot work | Typing into another app is a keystroke through the OS; Linux has no supported route, so the row is honest instead of decorative |
 | The product is called Guya (گویا) | The old name, V2T | The old name said nothing; "گویا" means articulate, speaking — the thing the app does — and it is four letters that both languages can say |
 | Every visible string comes from the dictionary, asserted by a test | Writing copy in the markup where it is read | A UI with two languages drifts the moment a sentence is written in one of them; the test fails the build when non-Latin text or a hardcoded label appears outside the dictionary, and when a key the markup asks for does not exist |
 | System menus are role menus | English labels written by the app | macOS already has these menus, in the user's language |

@@ -7,7 +7,7 @@ Read it before the first edit, follow it without being asked, and keep it true.
 
 ## What this is
 
-**Guya** (گویا) is a minimal voice-to-text utility for macOS and Windows. One
+**Guya** (گویا) is a minimal voice-to-text utility for macOS, Windows and Linux. One
 shortcut records, the audio goes to the Gemini API with the user's own key, and
 the transcript lands on the clipboard (and optionally gets typed into the focused
 app). An orb floats above the desktop so the microphone is never live invisibly.
@@ -53,7 +53,8 @@ preference.
 | Unit tests | `npm test` |
 | End-to-end (launches the app with a fake microphone) | `npm run e2e` |
 | Regenerate the icon | `npm run icons` |
-| Package for this machine | `npm run dist:mac` / `npm run dist:win` |
+| Package for this machine | `npm run dist:this` |
+| Package for a named platform | `npm run dist:mac` / `dist:win` / `dist:linux` / `dist` |
 | Build, install and register on this machine | `npm run install:mac` |
 | Cut a release | `scripts/release.sh 1.1.0` |
 
@@ -108,8 +109,12 @@ It checks the tree is clean, runs the tests, regenerates the icon, bumps
 `v1.1.0` and pushes both. The tag starts `.github/workflows/release.yml`, which:
 
 1. verifies the tag equals the version in `package.json` (and runs the tests),
-2. builds on `macos-latest` and `windows-latest` with `electron-builder`,
-3. creates the GitHub release and attaches the `.dmg`, `-mac.zip` and `.exe`.
+2. builds on `macos-latest`, `windows-latest` and `ubuntu-latest` with
+   `electron-builder` — each platform packages on its own system, because a deb
+   needs dpkg and an AppImage needs appimagetool,
+3. creates the GitHub release and attaches the `.dmg`, `-mac.zip`, `.exe`,
+   `.AppImage` and `.deb`. Artifacts are named for the runner's architecture, so a
+   release from the standard runners ships macOS arm64 and Windows/Linux x64.
 
 `.github/workflows/ci.yml` runs the unit tests on all three systems, the
 end-to-end suite on macOS, and packages both platforms on every push.

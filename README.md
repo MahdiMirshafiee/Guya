@@ -90,12 +90,18 @@ npm run install:mac
 
 ## ساخت نسخه‌ی نصبی
 
+سه پلتفرم، هر کدام روی سیستم خودش بهترین نتیجه را می‌دهد (deb به `dpkg` نیاز دارد، AppImage به `appimagetool`، و بسته‌بندی ویندوز روی ویندوز):
+
 ```bash
-npm run dist:mac   # dmg + zip
-npm run dist:win   # nsis installer + portable
+npm run dist:this   # همان سیستمی که رویش هستی
+npm run dist:mac    # dmg + zip
+npm run dist:win    # نصب‌کننده nsis + نسخه‌ی portable
+npm run dist:linux  # AppImage + deb
+npm run dist        # هر سه
 ```
 
-- برای ساخت نسخه‌ی ویندوز بهتر است روی خود ویندوز (یا با Wine) اجرا شود.
+- روی مک می‌توان AppImage را هم ساخت (تست شده)، ولی `deb` و بسته‌بندی ویندوز را روی سیستم خودشان بساز یا بگذار CI انجام دهد.
+- خروجی‌ها در `dist/` می‌افتند و در گیت نیستند. روی مک، `npm run install:mac` هم می‌سازد و هم نصب می‌کند.
 - بسته‌بندی به چند گیگابایت فضای خالی نیاز دارد.
 - آیکون اپ همان اورب است و با خودِ هندسه‌ی اورب تولید می‌شود: `node scripts/make-icons.js` (فایل‌های `assets/icon.png` و `build/icon.png`).
 
