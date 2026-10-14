@@ -24,7 +24,8 @@ app). An orb floats above the desktop so the microphone is never live invisibly.
   is the floating indicator and its capture worklet, `src/renderer/assets/` is what
   both load (the orb renderer and the fonts).
 - `src/shared/` is plain JavaScript used by both processes; it must not import
-  Electron.
+  Electron. `i18n.js` is the two-language dictionary, `prompt.js` the English
+  instructions sent to the model.
 
 ## Non-negotiables
 
@@ -34,6 +35,11 @@ preference.
 1. **No hardcoded user-visible string.** Every word comes from
    `src/shared/i18n.js`, in both languages. The test suite fails on non-Latin
    script or a hardcoded `aria-label`/`placeholder` anywhere outside that file.
+   The dictionary is for what the user reads. What the *model* reads — the
+   transcription instructions in `src/shared/prompt.js` — is not interface copy:
+   one precise English text, never translated, because a job description has one
+   reader, nobody in the window ever sees it, and a second copy in another
+   language is a second thing to keep in step.
 2. **Messages cross the process boundary as keys, never as sentences.** A
    renderer that is switched to the other language later must be able to say the
    same thing in that language. Translate at the moment you draw.
