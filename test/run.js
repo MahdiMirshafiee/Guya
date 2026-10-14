@@ -13,7 +13,7 @@ const Module = require('module');
 
 /* ------------------------------------------------------- electron stub ----- */
 
-const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'v2t-test-'));
+const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guya-test-'));
 const fakeElectron = {
   app: {
     getPath: () => userDataDir,

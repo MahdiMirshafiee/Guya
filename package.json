@@ -9,6 +9,7 @@
     "start": "electron .",
     "test": "node test/run.js",
     "icons": "node scripts/make-icons.js",
+    "install:mac": "scripts/install.sh",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
     "dist": "electron-builder --mac --win",
