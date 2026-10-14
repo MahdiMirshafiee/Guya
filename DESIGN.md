@@ -86,12 +86,11 @@ No decorative colours are defined. Everything is either semantic, or the inherit
 
 The panel never mixes more than one tinted surface at a time. Raw hex appears only inside the token block.
 
-Three sanctioned exceptions, each with a reason:
+Two sanctioned exceptions, each with a reason:
 
-0. The app icon and the header mark are the orb itself — the same object the app draws, with the warm "live" palette on the dark stage. The icon is the product's identity, not UI chrome, and drawing it from the orb's own geometry is what keeps the Dock and the window looking like one thing.
+0. The app icon is the orb itself — the same object the app draws, with the warm "live" palette, as a lit sphere on a tile sized to Apple's grid. The icon is the product's identity, not UI chrome, and it is generated from the same design (`scripts/make-icons.js`) rather than drawn as a flat shape, so the Dock and the window look like one thing. It is the only place raw colour lives outside the token block, and it is a 1024px asset, not a surface.
 1. `--glyph-ink` is white. It is drawn on a tinted sphere, where the normal text colour would fail contrast; white-on-colour on a status mark is what the system itself does.
 2. The orb palettes in §4.5 are fixed sRGB values. The orb is a status indicator — the one place colour is allowed — and it is deliberately not adaptive to the interface style, because a status light that shifts with the theme reads as a rendering bug.
-3. The app mark (the dock icon drawn in the header) carries the icon's own colours. It is artwork, not UI chrome.
 
 ### 3.2 Typography
 
@@ -154,7 +153,6 @@ Drawn inline from the Lucide set (MIT), 16px, 1.7px stroke, `currentColor`, neve
 
 | Use | Icon |
 | --- | --- |
-| App mark | `i-app` (the dock icon, drawn at 18px) |
 | API key / model / spoken language | `i-key`, `i-spark`, `i-globe` |
 | Shortcut / record button | `i-command`, `i-mic`, `i-stop` |
 | Settings / back | `i-gear`, `i-chevron` |
@@ -164,6 +162,8 @@ Drawn inline from the Lucide set (MIT), 16px, 1.7px stroke, `currentColor`, neve
 | Refresh | `i-refresh` |
 | Outcome (overlay only) | check / alert |
 
+The app icon is the one icon that is not Lucide: it is the orb, baked to PNG by `scripts/make-icons.js`. macOS gets a full canvas of art, because the system masks it to Apple's own 824-in-1024 body and adds the edge light and the shadow; Windows and Linux get the same art pre-shaped, since nothing does that for them. It never appears inside the window; the window's own header carries the app's name instead.
+
 Every icon-only control carries an `aria-label`, set from the same dictionary as its visible sibling. Icons are decorative (`aria-hidden`) when a visible label already names the row.
 
 ---
@@ -172,11 +172,11 @@ Every icon-only control carries an `aria-label`, set from the same dictionary as
 
 ### 4.1 The recorder (root)
 
-The whole product, on one screen. Title is the task, not the app name.
+The whole product, on one screen. The header carries the app's name on the centre line; the screen it sits on is already named by what it shows.
 
 ```
 ┌──────────────────────────────────────────────┐
-│  Dictate                            ⧉   ⚙︎  │  ← copy appears only with text
+│  Guya                              ⧉   ⚙︎  │  ← copy appears only with text
 ├──────────────────────────────────────────────┤
 │                                              │
 │         ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁                   │  ← CONTENT: drawn meter, 48 bars
@@ -300,8 +300,8 @@ Failed is amber rather than red, and always carries the exclamation glyph, so it
 | Rule | Example |
 | --- | --- |
 | Sentence case everywhere | "Start recording", not "Start Recording" |
-| Never the app name as a title | "Dictate", not "Guya" |
-| Titles ≤ 15 characters | "Dictate", "Settings" |
+| The window title is the app's name | "Guya"; the settings screen is titled "Settings", and neither is a sentence |
+| Titles ≤ 15 characters | "Guya", "Settings" |
 | No exclamation marks, no "Oops" | "No speech detected in that audio." |
 | Errors say what happened and what to do | "Microphone access for Guya is turned off." → with the settings pane offered |
 | No marketing language in the app | — |
@@ -341,7 +341,7 @@ Error strings are part of the design. Every failure maps to one of a small, fixe
 | A transcript carries its own direction | The interface's direction, or `dir="auto"` | Content written in Persian must read right-to-left even in an English window, and `dir="auto"` looks only at the first strong character, so an English word opening a Persian sentence would flip the whole paragraph. The direction is decided per paragraph by counting strong characters, and the browser's bidi algorithm then places any foreign word correctly inside it |
 | The main process is split by responsibility | One long `main.js` | A dictation touches the shortcut, the OS, the provider and the windows; keeping each of them in its own module is what makes a bug read as one file. The layering is checked, not just intended: leaves first, composition root last, no cycles |
 | Messages cross the process boundary as keys, never as sentences | Localizing in the main process and sending the text | A renderer that is switched to the other language after the message was created cannot re-say a sentence it was handed; the key lets it translate at the moment it draws |
-| Task title in the window | The app name | A window title is where the user reads what the window is for |
+| The window title is the app's name | A task title ("Dictate"), which is what this document first specified | A window title is where the user reads what the window is for, and this window has exactly one job — so the task title ("Dictate") only ever restated the screen below it, and it disagreed with the name the user sees in the Dock and the menus. The reversal is recorded here rather than quietly dropped: the earlier rule was about not wasting the titlebar, and the app's own name is not a waste |
 | Settings pushed inside the recorder window | A second window, or tabs | The product is one screen plus everything-else; a pushed view keeps one window, one title, and one place to look, and Escape already means "go back" |
 | The meter is drawn on a canvas | A row of icon bars | Icons are for controls; a level meter is a shape, and a symbol-soup waveform is a recognisable amateur tell |
 | The meter is fed from the overlay over IPC | The panel opening its own microphone | One process owns the microphone. A second capture would fight it for the device and double the permission surface |
@@ -364,7 +364,11 @@ Error strings are part of the design. Every failure maps to one of a small, fixe
 | The window buttons are hidden until the pointer reaches for them | Reserving a band of the titlebar for them | The buttons belong to the window, not to the app: hiding them until hover is what lets the title sit on the centre line and the controls sit against the opposite edge in every language, with nothing pre-reserved |
 | A setting that needs a system permission is refused until the system grants it | Letting the setting be on and failing later | "Paste automatically" cannot work without Accessibility, so the switch goes back to off, macOS is asked to put up its own dialog, and the form shows one sentence and the two actions that fix it. The app never claims a capability the platform has not granted |
 | The app asks macOS to say it, instead of only saying it itself | A sentence in a footnote | `isTrustedAccessibilityClient(true)` is the only way the user hears it in the system's own words, and polling lets the app notice the moment it is granted and finish the job |
-| The back control is placed with a logical margin | A physical one | A physical margin left it floating mid-titlebar in Persian, because the leading edge is on the other side there |
+| The back control sits on the leading edge, with the window buttons given a band above the toolbar | Reserving a fixed column of the toolbar for the buttons | The reserved column pushed the back control 76px into the window, where it read as floating and was the first thing reported as a bug. The buttons belong to the window, not to the toolbar row, so they get the padding above it and every control keeps its own edge: back on the leading edge, actions on the trailing edge, in both directions |
+| Back is the chevron, Escape, or Cmd+[ | The chevron alone | Escape is the recorder's stop control while the microphone is open, so the settings screen needs a way back that is never ambiguous — and Cmd+[ is where macOS puts "back" |
+| The app icon is a lit sphere on a tile that fills the canvas, generated by `scripts/make-icons.js` | Ship the shaped squircle with its margins, or a drawn symbol | The icon is the orb, and a sphere only reads as one if it is shaded: a normal per pixel, one light, a tight specular, a rim, a bounce and a shadow where the system does not draw one. The canvas is filled edge to edge because macOS 26 masks the icon itself, and art that does not reach the edge is treated as a photograph: the system discards the baked shape, rescales the content to about 55% and puts its own background behind it, which is the tile-inside-a-tile this icon shipped with until it was measured. The Windows and Linux copies are the shaped variant since nothing masks them there |
+| The silhouette is fitted to the system, not chosen | Exponent 5, the usual squircle rule of thumb | Measured against one of Apple's own icons as macOS 26 renders it here: the body is 824 inside 1024, the straight edge ends 230px in, and the corner profile matches a superellipse at exponent 4.3 to 1.1px over 1024. Exponent 5 is visibly squarer than what the system ships. On macOS this only affects the artwork's own edge treatment, because the mask is the system's; on Windows and Linux it is the silhouette the user sees |
+| The macOS icon path is set explicitly in `build.mac.icon` | Letting electron-builder find it | Left to itself it built the `.icns` from `build/icons/1024x1024.png` — the Linux folder — so macOS received pre-shaped art and rescaled it. The bundler's default search is not the file you think it is; naming it is one line and removes the guess |
 | The floating orb is suppressed while the recorder window is in front | Always showing it | The window already shows the meter, the timer and the orb; the same thing twice on one screen is noise |
 | The silence stop is a setting, not a constant | 10 seconds, decided in code | The wait for it is the longest part of the round trip, so the user is the right person to decide how long it is |
 | Silence stop uses an adaptive floor | A fixed threshold | A fixed threshold either never fires in a noisy room or fires mid-sentence in a quiet one |
@@ -398,7 +402,7 @@ Run through this before calling any screen finished.
 - [ ] No hard-coded radius that is not one of the two container/control radii.
 - [ ] Exactly one prominent button on the screen.
 - [ ] Every custom control has a press state; every icon-only control has a label.
-- [ ] Title is the task, ≤ 15 characters, never the app name.
+- [ ] The window title is the app's name (or the screen's, in settings), ≤ 15 characters, never a sentence.
 - [ ] No motion on a frequently repeated interaction; custom motion respects Reduce Motion.
 - [ ] Nothing moves on a timer while the microphone is live — every movement is the input.
 - [ ] No spinner.
