@@ -89,6 +89,17 @@ function buildInstruction(settings) {
   return [spoken, base].filter(Boolean).join('\n');
 }
 
+/* Resolving and connecting to the provider takes a few hundred milliseconds; it
+ * should happen while the user is still speaking, not after they stop. */
+function warm() {
+  try {
+    const { session } = require('electron');
+    session.defaultSession.preconnect({ url: 'https://generativelanguage.googleapis.com', numSockets: 1 });
+  } catch (_) {
+    /* best effort */
+  }
+}
+
 async function listModels(apiKey, uiLanguage) {
   if (!apiKey) return { ok: false, errorKey: 'error.noKey' };
   try {
@@ -278,4 +289,4 @@ async function transcribe({ apiKey, model, wav, settings, seconds, onAttempt }) 
 }
 
 
-module.exports = { listModels, transcribe, testKey, buildInstruction, systemInstruction, outputCap };
+module.exports = { listModels, transcribe, testKey, buildInstruction, systemInstruction, outputCap, warm };

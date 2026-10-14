@@ -137,7 +137,7 @@ async function createCaptureNode(context) {
 
   if (context.audioWorklet) {
     try {
-      await context.audioWorklet.addModule('/renderer/capture-worklet.js');
+      await context.audioWorklet.addModule('/renderer/overlay/capture-worklet.js');
       const worklet = new AudioWorkletNode(context, 'guya-capture');
       worklet.port.onmessage = (event) => onChunk(event.data);
       return worklet;

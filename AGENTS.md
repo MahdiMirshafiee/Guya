@@ -15,8 +15,16 @@ app). An orb floats above the desktop so the microphone is never live invisibly.
 - `DESIGN.md` is the source of truth for the interface. **If you change how
   something looks or behaves, change that document in the same change.**
 - `README.md` is the user-facing guide, in Persian, with English technical terms.
-- `src/renderer/panel.*` is the window (recorder + settings), `orb.js` is the orb,
-  `overlay.*` is the floating indicator, `src/main/*` is the main process.
+- `src/main/` is the main process, split by responsibility: `index.js` starts and
+  wires, `recorder.js` owns a dictation session, `state.js` owns the phase,
+  `ipc.js` is the whole contract with the renderers, `system.js` is everything the
+  OS is asked for, `platform.js` is what differs per system. No cycles: leaves
+  first, composition last.
+- `src/renderer/panel/` is the window (recorder + settings), `src/renderer/overlay/`
+  is the floating indicator and its capture worklet, `src/renderer/assets/` is what
+  both load (the orb renderer and the fonts).
+- `src/shared/` is plain JavaScript used by both processes; it must not import
+  Electron.
 
 ## Non-negotiables
 
@@ -51,6 +59,7 @@ preference.
 | --- | --- |
 | Run the app | `npm start` |
 | Unit tests | `npm test` |
+| Lint the module graph | `node scripts/check-structure.js` |
 | End-to-end (launches the app with a fake microphone) | `npm run e2e` |
 | Regenerate the icon | `npm run icons` |
 | Package for this machine | `npm run dist:this` |
@@ -62,7 +71,9 @@ preference.
 
 Before calling a change finished:
 
-1. `npm test` passes.
+1. `npm test` passes, and `node scripts/check-structure.js` reports no cycles,
+   no destructured import that names something a module does not export, and no
+   module importing Electron from `src/shared/`.
 2. `npm run e2e` passes when anything the user sees changed. It is the only check
    that reads what is actually on screen.
 3. If the interface changed: look at it. Start with

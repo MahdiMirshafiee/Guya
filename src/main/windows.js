@@ -62,13 +62,13 @@ function createPanel() {
     titleBarStyle: IS_MAC ? 'customButtonsOnHover' : 'default',
     trafficLightPosition: IS_MAC ? { x: 14, y: 14 } : undefined,
     webPreferences: {
-      preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+      preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false
     }
   });
-  panelWin.loadURL(rendererUrl('panel.html'));
+  panelWin.loadURL(rendererUrl('panel/panel.html'));
   traceRenderer(panelWin, 'panel');
 
   panelWin.on('close', (event) => {
@@ -126,7 +126,7 @@ function createOverlay() {
     acceptFirstMouse: true,
     type: IS_MAC ? 'panel' : 'toolbar',
     webPreferences: {
-      preload: path.join(__dirname, '..', 'preload', 'preload.js'),
+      preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       backgroundThrottling: false,
@@ -142,7 +142,7 @@ function createOverlay() {
 
   overlayReady = new Promise((resolve) => overlayWin.webContents.once('did-finish-load', resolve));
   overlayWin.webContents.on('did-finish-load', () => overlayWin.hide());
-  overlayWin.loadURL(rendererUrl('overlay.html'));
+  overlayWin.loadURL(rendererUrl('overlay/overlay.html'));
   traceRenderer(overlayWin, 'overlay');
   return overlayWin;
 }

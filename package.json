@@ -4,10 +4,11 @@
   "version": "1.0.0",
   "private": true,
   "description": "Minimal local voice-to-text utility (Gemini) for macOS and Windows",
-  "main": "src/main/main.js",
+  "main": "src/main/index.js",
   "scripts": {
     "start": "electron .",
-    "test": "node test/run.js",
+    "test": "node scripts/check-structure.js && node test/run.js",
+    "check": "node scripts/check-structure.js",
     "icons": "node scripts/make-icons.js",
     "install:mac": "scripts/install.sh",
     "dist:mac": "electron-builder --mac",
@@ -55,7 +56,6 @@
       "synopsis": "Minimal voice-to-text with your own Gemini key",
       "description": "A minimal voice-to-text utility: one shortcut records, the audio goes to the Gemini API with your own key, and the transcript lands on the clipboard.",
       "maintainer": "Mahdi Mirshafiee <Mirshafieemahdi001@gmail.com>",
-      "desktopName": "guya.desktop",
       "syncDesktopName": true
     },
     "deb": {
@@ -79,5 +79,6 @@
     "@noble/hashes": "^1.8.0"
   },
   "author": "Mahdi Mirshafiee",
-  "homepage": "https://github.com/MahdiMirshafiee/guya"
+  "homepage": "https://github.com/MahdiMirshafiee/guya",
+  "desktopName": "guya.desktop"
 }
