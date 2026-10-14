@@ -45,6 +45,12 @@ cp -R "$BUNDLE" /Applications/
 
 echo "==> registering with Launch Services"
 "$LSREGISTER" -f "$APP"
+
+# Packaging registers the build copy too; deleting it afterwards would leave the
+# very stale entry this script exists to avoid.
+if [ -e "$BUNDLE" ]; then
+  "$LSREGISTER" -u "$PWD/$BUNDLE" || true
+fi
 rm -rf dist
 
 if [ "$was_running" -eq 1 ]; then
