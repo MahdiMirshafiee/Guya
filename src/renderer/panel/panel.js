@@ -280,10 +280,16 @@ R.closeSettings.addEventListener('click', goBack);
 R.record.addEventListener('click', onRecord);
 R.copyTranscript.addEventListener('click', copyTranscript);
 
+/* Two conventional ways back out of a pushed screen: Escape, and the macOS
+ * Command-[ . Neither should fire while the microphone is live, because Escape
+ * stops a recording then. */
 document.addEventListener('keydown', (event) => {
-  if (event.key !== 'Escape') return;
   if (document.body.dataset.view !== 'settings') return;
   if (appState.phase === 'recording' || appState.phase === 'starting') return;
+  const escape = event.key === 'Escape';
+  const back = (event.metaKey || event.ctrlKey) && event.key === '[';
+  if (!escape && !back) return;
+  event.preventDefault();
   goBack();
 });
 

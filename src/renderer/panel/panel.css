@@ -165,11 +165,11 @@ body[data-view='settings'] .view-settings {
   -webkit-app-region: drag;
 }
 
-/* The window buttons only appear on hover, so nothing reserves space for them:
- * the title sits on the centre line and the controls live against the physical
- * right edge, opposite where the buttons appear. */
+/* The window buttons appear over the top-left corner on hover. They get their own
+ * band above the header rather than a reserved column, so no control has to be
+ * pushed away from its edge to avoid them. */
 body.is-mac .navbar {
-  padding-top: 22px;
+  padding-top: 34px;
 }
 
 .nav-title {
@@ -188,16 +188,10 @@ body.is-mac .navbar {
   margin-left: auto;
 }
 
-/* Logical, so the back control hugs its own leading edge in both directions. */
+/* The back control sits on its own leading edge, where a back control belongs —
+ * the actions on the other side take the auto margin, so this needs none. */
 .nav-back {
-  margin-inline-end: auto;
-}
-
-/* The window buttons appear on the physical left in every language, and only the
- * settings screen has a control on that side (the back chevron when the interface
- * is left-to-right), so only it needs the gap. */
-body.is-mac .view-settings .navbar {
-  padding-left: 76px;
+  flex: 0 0 auto;
 }
 
 .nav-btn {
