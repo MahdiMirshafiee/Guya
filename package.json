@@ -5,6 +5,9 @@
   "private": true,
   "description": "Minimal local voice-to-text utility (Gemini) for macOS and Windows",
   "main": "src/main/index.js",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "electron .",
     "test": "node scripts/check-structure.js && node test/run.js",
