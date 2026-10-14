@@ -25,37 +25,11 @@
     { code: 'hi', fa: 'هندی', en: 'Hindi' }
   ];
 
-  /* A proper transcription system prompt, not a sentence in the user turn: this is
-   * the model's job description, and it is sent as systemInstruction. */
-  var SYSTEM_PROMPTS = {
-    fa: [
-      'تو یک موتور رونویسی گفتار هستی: صدای ضبط‌شده را دقیقاً به متن تبدیل می‌کنی.',
-      '',
-      'قواعد:',
-      '- فقط و فقط متن رونویسی‌شده را بنویس. هیچ مقدمه، توضیح، عنوان، برچسب گوینده یا نقل‌قولی اضافه نکن.',
-      '- هر چه شنیده می‌شود را کلمه‌به‌کلمه بنویس؛ خلاصه نکن، ترجمه نکن و به پرسشی که در صدا پرسیده می‌شود پاسخ نده.',
-      '- واژه‌های پرکننده، تکرارها و شروع‌های ناتمام را حفظ کن.',
-      '- نشانه‌گذاری را بر اساس آهنگ گفتار بگذار: نقطه، علامت پرسش و پاراگراف در مکث‌های بلند.',
-      '- عددها، تاریخ‌ها و ساعت‌ها را با رقم بنویس، مگر اینکه گوینده آن‌ها را حرف‌به‌حرف بگوید.',
-      '- اصطلاحات فنی، نام محصول‌ها و شناسه‌های کد را با همان خط و املای اصلی بنویس، حتی داخل متن فارسی.',
-      '- اگر در صدا گفتار قابل‌تشخیصی نیست، خروجی را کاملاً خالی بگذار.'
-    ].join('\n'),
-    en: [
-      'You are a transcription engine: you turn recorded speech into text, verbatim.',
-      '',
-      'Rules:',
-      '- Output only the transcript. No preamble, no commentary, no headings, no speaker labels, no surrounding quotes.',
-      '- Transcribe exactly what is said. Never summarise, never translate, and never answer a question that is asked in the audio.',
-      '- Keep filler words, repetitions and false starts.',
-      '- Punctuate to match the delivery: sentences, question marks, and paragraph breaks on long pauses.',
-      '- Write numbers, dates and times as digits unless the speaker spells them out.',
-      '- Keep technical terms, product names and code identifiers in their original script, even inside Persian text.',
-      '- If the audio contains no intelligible speech, output nothing at all.'
-    ].join('\n')
-  };
-
-  /* Superseded by SYSTEM_PROMPTS. Kept only so an install that still carries one
-   * of these as its "instructions" can be tidied up to an empty field. */
+  /* The instruction text older builds shipped, in the field the user owns. It lives
+   * here for the one reason non-Latin text is allowed in this file: it is text in
+   * two languages. The migration in the store clears it, so an install that still
+   * carries one of these ends up with an empty field. The model's own instructions,
+   * which are not user-visible and not translated, are in `prompt.js`. */
   var LEGACY_PROMPTS = {
     fa:
       'تو یک موتور تبدیل گفتار به متن هستی. هر چیزی که در صدا شنیده می‌شود را دقیق و کامل به متن تبدیل کن. ' +
@@ -66,15 +40,6 @@
   };
 
   var MESSAGES = {
-    /* ---- transcription instructions ---- */
-    'prompt.audioIsIn': { fa: 'زبان گفتار «{language}» است.', en: 'The audio is in {language}.' },
-    'prompt.detect': { fa: 'زبان گفتار را خودت تشخیص بده.', en: 'Detect the spoken language yourself.' },
-    'prompt.systemAudioIsIn': { fa: 'زبان صدای ورودی {language} است.', en: 'The audio is in {language}.' },
-    'prompt.systemDetect': {
-      fa: 'زبان صدا ممکن است هر زبانی باشد؛ متن را به همان زبانی که گفته می‌شود بنویس.',
-      en: 'The audio may be in any language: transcribe it in the language it is spoken in.'
-    },
-
     /* ---- main process: errors ---- */
     'error.noKey': { fa: 'کلید API جمنای ثبت نشده است.', en: 'No Gemini API key yet.' },
     'error.micDenied': { fa: 'دسترسی میکروفون برای Guya بسته است.', en: 'Microphone access for Guya is turned off.' },
@@ -233,7 +198,6 @@
 
   return {
     LANGUAGES: LANGUAGES,
-    SYSTEM_PROMPTS: SYSTEM_PROMPTS,
     LEGACY_PROMPTS: LEGACY_PROMPTS,
     MESSAGES: MESSAGES,
     t: t,

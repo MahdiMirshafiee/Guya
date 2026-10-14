@@ -1,8 +1,6 @@
 /* Defaults shared by the settings store and the UI. */
 'use strict';
 
-const { SYSTEM_PROMPTS, LEGACY_PROMPTS } = require('./i18n');
-
 /* Keyboard shortcut: one press starts recording, the same one stops it. */
 const DEFAULT_SHORTCUT = 'CommandOrControl+Shift+Space';
 
@@ -33,4 +31,4 @@ const DEFAULTS = {
   launchAtLogin: false
 };
 
-module.exports = { DEFAULTS, KNOWN_MODELS, MAX_RECORDING_MS, SILENCE_STOP_MS, SILENCE_CHOICES, ATTEMPT_CHOICES, SYSTEM_PROMPTS, LEGACY_PROMPTS };
+module.exports = { DEFAULTS, KNOWN_MODELS, MAX_RECORDING_MS, SILENCE_STOP_MS, SILENCE_CHOICES, ATTEMPT_CHOICES };

@@ -4,8 +4,8 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
-const { DEFAULTS, SILENCE_CHOICES, ATTEMPT_CHOICES, LEGACY_PROMPTS } = require('../shared/defaults');
-const { LANGUAGES: SPOKEN_LANGUAGES } = require('../shared/i18n');
+const { DEFAULTS, SILENCE_CHOICES, ATTEMPT_CHOICES } = require('../shared/defaults');
+const { LANGUAGES: SPOKEN_LANGUAGES, LEGACY_PROMPTS } = require('../shared/i18n');
 
 const FILE = path.join(app.getPath('userData'), 'settings.json');
 /* The app used to be called V2T: carry a configured install over rather than
