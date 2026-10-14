@@ -4,6 +4,8 @@
 'use strict';
 
 const { app, clipboard, systemPreferences, shell } = require('electron');
+const fs = require('fs');
+const path = require('path');
 const { execFile } = require('child_process');
 
 const IS_MAC = process.platform === 'darwin';
@@ -30,6 +32,44 @@ function loginItemState() {
   } catch (_) {
     return false;
   }
+}
+
+/* Typing into another app is a keystroke through the OS, and each system exposes
+ * it differently: AppleScript on macOS, SendKeys on Windows, and on Linux a small
+ * helper the user installs. X11 has xdotool; Wayland has ydotool and wtype. */
+const LINUX_TOOLS = [
+  { name: 'xdotool', session: 'x11', args: ['key', '--clearmodifiers', 'ctrl+v'] },
+  { name: 'ydotool', session: 'wayland', args: ['key', '29:1', '47:1', '47:0', '29:0'] },
+  { name: 'wtype', session: 'wayland', args: ['-M', 'ctrl', '-k', 'v', '-m', 'ctrl'] }
+];
+
+function commandExists(command) {
+  const path = process.env.PATH || '';
+  return path.split(':').some((dir) => {
+    if (!dir) return false;
+    try {
+      fs.accessSync(path.join(dir, command), fs.constants.X_OK);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  });
+}
+
+/* Pure, so it can be tested without touching the machine. */
+function choosePasteTool(available, wayland) {
+  const order = wayland ? ['ydotool', 'wtype', 'xdotool'] : ['xdotool', 'ydotool', 'wtype'];
+  const name = order.find((candidate) => available.indexOf(candidate) !== -1);
+  return LINUX_TOOLS.find((tool) => tool.name === name) || null;
+}
+
+/* What this machine can do, so the interface can say it instead of guessing. */
+function pasteSupport() {
+  if (IS_MAC) return { supported: true, tool: 'osascript' };
+  if (IS_WIN) return { supported: true, tool: 'powershell' };
+  const available = LINUX_TOOLS.filter((tool) => commandExists(tool.name)).map((tool) => tool.name);
+  const tool = choosePasteTool(available, !!process.env.WAYLAND_DISPLAY);
+  return { supported: !!tool, tool: tool ? tool.name : null };
 }
 
 /* Types the clipboard content into whatever app currently has focus. Returns
@@ -63,7 +103,14 @@ function pasteIntoActiveApp() {
       return;
     }
 
-    resolve({ ok: false, errorKey: 'error.unsupportedPlatform' });
+    const tool = choosePasteTool(
+      LINUX_TOOLS.filter((candidate) => commandExists(candidate.name)).map((candidate) => candidate.name),
+      !!process.env.WAYLAND_DISPLAY
+    );
+    if (!tool) return resolve({ ok: false, errorKey: 'error.pasteNeedsTool' });
+    execFile(tool.name, tool.args, { timeout: 5000 }, (err) =>
+      resolve(err ? { ok: false, errorKey: 'error.pasteFailed' } : { ok: true })
+    );
   });
 }
 
@@ -132,4 +179,4 @@ function openPrivacySettings(kind) {
   return Promise.resolve();
 }
 
-module.exports = { copy, pasteIntoActiveApp, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemState };
+module.exports = { copy, pasteIntoActiveApp, pasteSupport, choosePasteTool, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemState };

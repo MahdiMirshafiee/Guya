@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('guya', {
   copyToClipboard: (text) => ipcRenderer.invoke('clipboard:copy', text),
   openPrivacySettings: (kind) => ipcRenderer.invoke('system:open-privacy', kind),
   accessibilityStatus: () => ipcRenderer.invoke('permissions:accessibility'),
+  pasteSupport: () => ipcRenderer.invoke('permissions:paste'),
   requestAccessibility: () => ipcRenderer.invoke('permissions:request-accessibility'),
   onLevel: (handler) => {
     const listener = (_event, level) => handler(level);

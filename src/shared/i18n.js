@@ -192,9 +192,13 @@
       en: 'macOS requires Accessibility permission before an app can type into another app. Until it is granted, this stays off.'
     },
     'ui.openSystemSettings': { fa: 'باز کردن تنظیمات سیستم', en: 'Open System Settings' },
-    'settings.pasteUnsupported': {
-      fa: 'تایپ خودکار در برنامه‌های دیگر روی لینوکس وجود ندارد؛ این گزینه در مک و ویندوز کار می‌کند.',
-      en: 'Typing into another app is not possible on Linux; this option works on macOS and Windows.'
+    'settings.pasteNeedsTool': {
+      fa: 'برای تایپ خودکار در لینوکس یکی از این ابزارها را نصب کنید: xdotool (روی X11) یا ydotool / wtype (روی Wayland).',
+      en: 'To type automatically on Linux, install one of: xdotool (X11), ydotool or wtype (Wayland).'
+    },
+    'error.pasteNeedsTool': {
+      fa: 'ابزار تایپ خودکار روی این سیستم نصب نیست (xdotool یا ydotool/wtype).',
+      en: 'No automatic-paste helper is installed (xdotool, or ydotool/wtype).'
     },
     'ui.askMacos': { fa: 'اجازه گرفتن از مک', en: 'Ask macOS' },
     'ui.pasteGranted': { fa: 'اجازه داده شد', en: 'Permission granted' },

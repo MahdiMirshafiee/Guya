@@ -184,12 +184,7 @@ function repaintSettings() {
   F.launchAtLogin.checked = !!settings.launchAtLogin;
   F.toggleKey.setAttribute('aria-label', F.apiKey.type === 'password' ? t('ui.showKey') : t('ui.hideKey'));
 
-  /* Automatic paste is a keystroke through the OS: macOS and Windows have one,
-   * Linux does not, so the row is disabled there rather than lying. */
-  const pasteSupported = appState.platform !== 'linux';
-  F.pasteAfterTranscribe.disabled = !pasteSupported;
-  F.pasteFootnote.textContent = pasteSupported ? t('settings.pasteFootnote') : t('settings.pasteUnsupported');
-  F.pasteFootnote.className = 'footnote' + (pasteSupported ? '' : ' footnote-quiet');
+  applyPasteSupport(pasteSupport);
   F.refreshModels.setAttribute('aria-label', t('ui.refreshModels'));
   renderLanguages();
   renderModels();
@@ -203,6 +198,15 @@ function repaintSettings() {
  * app asks the system to say it in its own words, keeps checking, and only then
  * lets the setting stay on. */
 let pasteWatch = null;
+let pasteSupport = { supported: true, tool: null };
+
+/* Whether this machine can type into another app at all, and with what. */
+function applyPasteSupport(next) {
+  pasteSupport = next || { supported: true, tool: null };
+  F.pasteAfterTranscribe.disabled = !pasteSupport.supported;
+  F.pasteFootnote.textContent = pasteSupport.supported ? t('settings.pasteFootnote') : t('settings.pasteNeedsTool');
+  F.pasteFootnote.className = 'footnote' + (pasteSupport.supported ? '' : ' footnote-quiet');
+}
 
 function showPasteNotice(granted) {
   F.pasteNotice.hidden = false;
@@ -395,6 +399,11 @@ function initSettings() {
   on(F.pasteAfterTranscribe, 'change', async () => {
     try {
       if (F.pasteAfterTranscribe.checked) {
+        if (!pasteSupport.supported) {
+          F.pasteAfterTranscribe.checked = false;
+          setFormStatus('settings.pasteNeedsTool', 'warn');
+          return;
+        }
         const status = await api.accessibilityStatus();
         if (!status.granted) {
           F.pasteAfterTranscribe.checked = false;
@@ -429,6 +438,15 @@ function initSettings() {
 
 /* Called by the shell every time the settings screen is opened. */
 window.__refreshSettings = async function refreshSettings() {
+  try {
+    applyPasteSupport(await api.pasteSupport());
+    if (!pasteSupport.supported) {
+      hidePasteNotice();
+      return;
+    }
+  } catch (_) {
+    /* keep the last answer */
+  }
   let status = { granted: true };
   try {
     status = await api.accessibilityStatus();

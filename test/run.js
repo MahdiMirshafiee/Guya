@@ -37,6 +37,7 @@ const GuyaAudio = require('../src/shared/audio.js');
 const GuyaAccelerator = require('../src/shared/accelerator.js');
 const GuyaI18n = require('../src/shared/i18n.js');
 const GuyaBidi = require('../src/shared/bidi.js');
+const systemIntegration = require('../src/main/system.js');
 const store = require('../src/main/store.js');
 const gemini = require('../src/main/gemini.js');
 
@@ -271,6 +272,39 @@ test('unknown fields are dropped', () => {
   assert.strictEqual(settings.somethingElse, undefined);
 });
 
+/* ====================================================== paste helpers ==== */
+
+group('typing into another app');
+
+test('the platform picks the right helper', () => {
+  assert.strictEqual(systemIntegration.pasteSupport().supported, true, 'macOS and Windows always have one');
+});
+
+test('a Linux session prefers the tool its display server has', () => {
+  const wayland = systemIntegration.choosePasteTool(['ydotool', 'wtype', 'xdotool'], true);
+  assert.strictEqual(wayland.name, 'ydotool', 'on Wayland the native tool comes first');
+  const waylandWithoutYdotool = systemIntegration.choosePasteTool(['wtype', 'xdotool'], true);
+  assert.strictEqual(waylandWithoutYdotool.name, 'wtype');
+  const x11 = systemIntegration.choosePasteTool(['xdotool', 'ydotool'], false);
+  assert.strictEqual(x11.name, 'xdotool', 'on X11 xdotool comes first');
+});
+
+test('X11 falls back to a Wayland tool rather than giving up', () => {
+  assert.strictEqual(systemIntegration.choosePasteTool(['wtype'], false).name, 'wtype');
+});
+
+test('no helper means no claim that it works', () => {
+  assert.strictEqual(systemIntegration.choosePasteTool([], false), null);
+  assert.strictEqual(systemIntegration.choosePasteTool([], true), null);
+});
+
+test('every helper carries the keystroke it needs', () => {
+  ['xdotool', 'ydotool', 'wtype'].forEach((name) => {
+    const tool = systemIntegration.choosePasteTool([name], false);
+    assert.ok(Array.isArray(tool.args) && tool.args.length >= 2, name + ' needs arguments');
+  });
+});
+
 /* ============================================================= gemini ==== */
 
 group('gemini client');
@@ -471,13 +505,16 @@ test('no user-visible string is hardcoded', () => {
   const root = path.join(__dirname, '..');
   /* Every source file except the dictionary itself. */
   const files = [];
-  ['src/main', 'src/renderer', 'src/preload', 'src/shared'].forEach((dir) => {
-    fs.readdirSync(path.join(root, dir)).forEach((name) => {
-      if (!/\.(js|html|css)$/.test(name)) return;
-      if (name === 'i18n.js') return;
-      files.push(path.join(dir, name));
+  const walk = (dir) => {
+    fs.readdirSync(path.join(root, dir), { withFileTypes: true }).forEach((entry) => {
+      const relative = path.join(dir, entry.name);
+      if (entry.isDirectory()) return walk(relative);
+      if (!/\.(js|html|css)$/.test(entry.name)) return;
+      if (entry.name === 'i18n.js') return; // the dictionary itself
+      files.push(relative);
     });
-  });
+  };
+  ['src/main', 'src/renderer', 'src/preload', 'src/shared'].forEach(walk);
   assert.ok(files.length > 12, 'the audit should cover the whole source tree');
 
   files.forEach((file) => {
@@ -489,7 +526,7 @@ test('no user-visible string is hardcoded', () => {
   });
 
   // every key the markup asks for must exist, or the UI would show a raw key
-  const html = fs.readFileSync(path.join(root, 'src/renderer/panel.html'), 'utf8');
+  const html = fs.readFileSync(path.join(root, 'src/renderer/panel/panel.html'), 'utf8');
   const keys = Array.from(html.matchAll(/data-i18n(?:-placeholder|-label)?="([^"]+)"/g)).map((m) => m[1]);
   assert.ok(keys.length > 15, 'the markup should be driven by keys, found ' + keys.length);
   keys.forEach((key) => {
