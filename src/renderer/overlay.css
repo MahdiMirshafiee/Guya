@@ -1,0 +1,121 @@
+/*
+ * The recording HUD: a small luminous orb whose colour clouds are driven by your
+ * voice, plus a one-line message underneath. The orb itself is drawn on canvas
+ * (see overlay.js); this file only lays it out.
+ */
+:root {
+  /* --box must be large enough to hold the aura at full level. */
+  --orb: 54px;
+  --box: 96px;
+
+  --ink: #1d1d1f;
+  --pill: rgba(250, 250, 252, 0.78);
+  /* On-colour contrast for the outcome glyph, the one sanctioned white. */
+  --glyph-ink: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #ffffff;
+    --pill: rgba(24, 25, 30, 0.7);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+  font-family: 'Inter', 'Vazirmatn', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+.sprite {
+  display: none;
+}
+
+.stage {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.18s ease-out;
+}
+
+.stage[data-state='starting'],
+.stage[data-state='listening'],
+.stage[data-state='processing'],
+.stage[data-state='done'],
+.stage[data-state='error'] {
+  opacity: 1;
+}
+
+.orb {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--orb);
+  height: var(--orb);
+  margin-top: 26px;
+}
+
+/* The canvas is larger than the sphere so the glow has room to breathe. */
+.orb canvas {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--box);
+  height: var(--box);
+  transform: translate(-50%, -50%);
+}
+
+.glyph {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  display: none;
+  fill: none;
+  stroke: var(--glyph-ink);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
+}
+
+[data-state='done'] .glyph-check,
+[data-state='error'] .glyph-alert {
+  display: block;
+}
+
+/* One line of state. Content gets no glass, no border and no shadow — just
+ * enough of a scrim to stay readable over whatever is on the desktop. */
+.message {
+  margin-top: 5px;
+  padding: 2px 8px;
+  max-width: 206px;
+  border-radius: 7px;
+  background: var(--pill);
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.16s ease-out;
+}
+
+.message.show {
+  opacity: 1;
+}

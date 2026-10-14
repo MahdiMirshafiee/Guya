@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; worker-src 'self'; font-src 'self'"
+    />
+    <title>Guya</title>
+    <link rel="stylesheet" href="./fonts.css" />
+    <link rel="stylesheet" href="./overlay.css" />
+  </head>
+  <body>
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.8l4.2 4.2L19 7.2" /></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 6.5v7.2" /><path d="M12 17.6v.01" /></symbol>
+    </svg>
+
+    <div class="stage" id="stage" data-state="idle">
+      <div class="orb">
+        <canvas id="orb-canvas"></canvas>
+        <svg class="glyph glyph-check" aria-hidden="true"><use href="#i-check" /></svg>
+        <svg class="glyph glyph-alert" aria-hidden="true"><use href="#i-alert" /></svg>
+      </div>
+      <div class="message" id="message"></div>
+    </div>
+
+    <script src="/shared/i18n.js"></script>
+    <script src="/shared/audio.js"></script>
+    <script src="./orb.js"></script>
+    <script src="./overlay.js"></script>
+  </body>
+</html>
