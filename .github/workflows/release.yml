@@ -1,0 +1,98 @@
+name: Release
+
+# A tag is the release. `scripts/release.sh 1.2.0` bumps the version, commits it,
+# tags it and pushes — and this workflow turns that tag into published artifacts.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (leave empty for a dry run that only builds)'
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: verify the tag matches the version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Check the tag and package.json agree
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          if [ -n "$tag" ] && [ "$tag" != "v$version" ]; then
+            echo "::error::tag $tag does not match package.json v$version — release with scripts/release.sh $version"
+            exit 1
+          fi
+
+  build:
+    name: build (${{ matrix.name }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            target: mac
+            artifacts: |
+              dist/*.dmg
+              dist/*-mac.zip
+          - name: Windows
+            os: windows-latest
+            target: win
+            artifacts: |
+              dist/*.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run icons
+      # Signing is one secret away: set CSC_LINK and CSC_KEY_PASSWORD (macOS) or
+      # the Windows equivalent and electron-builder picks them up. Without them
+      # the artifacts build unsigned, which is what a local build produces too.
+      - run: npx electron-builder --${{ matrix.target }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: guya-${{ matrix.target }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: publish the release
+    needs: [verify, build]
+    if: github.event_name == 'push' || github.event.inputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create the release and attach the installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          mapfile -t files < <(find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' \) | sort)
+          printf 'attaching:\n%s\n' "${files[@]}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            gh release create "$tag" "${files[@]}" --title "Guya $tag" --generate-notes
+          fi
