@@ -160,6 +160,7 @@ Drawn inline from the Lucide set (MIT), 16px, 1.7px stroke, `currentColor`, neve
 | Prompt / transcript | `i-pencil`, `i-quote` |
 | Show key / hide key | `i-eye`, `i-eye-off` |
 | Refresh | `i-refresh` |
+| Reset a field to its default | `i-reset` |
 | Outcome (overlay only) | check / alert |
 
 The app icon is the one icon that is not Lucide: it is the orb, baked to PNG by `scripts/make-icons.js`. macOS gets a full canvas of art, because the system masks it to Apple's own 824-in-1024 body and adds the edge light and the shadow; Windows and Linux get the same art pre-shaped, since nothing does that for them. It never appears inside the window; the window's own header carries the app's name instead.
@@ -235,10 +236,11 @@ Pushed over the recorder from the toolbar, with a back chevron. Everything the a
 │  │ Spoken language         Auto detect  ⌄ │  │
 │  │ Stop after silence      10 seconds   ⌄ │  │
 │  │ Attempts                3            ⌄ │  │
-│  │ Instructions & context                 │  │
-│  │ [ … ]                                  │  │
+│  │ System prompt                     ↺     │  │  ← label + reset, trailing
+│  │ [ the instructions sent with every     │  │  ← always left-to-right
+│  │   recording, in English ]              │  │
 │  └────────────────────────────────────────┘  │
-│  For your own vocabulary. Optional.          │
+│  This text is sent with every recording.     │
 │                                              │
 │  Output      Copy · Paste · Launch at login  │
 │  About       Interface language · Version    │
@@ -253,6 +255,8 @@ Rules:
 - **The key is checked when it is entered**, not behind a button: the model list is the positive confirmation, and a rejected key is a sentence in the form's status line.
 - **The model row is a picker with a "Custom…" entry.** Provider model names change faster than releases.
 - **Back is the chevron, and Escape closes the screen** — but Escape is only the recorder's stop control while the microphone is open.
+- **The system prompt is the user's.** The field shows the text the app sends with every recording, and it is a field, not a footnote: someone who wants a different vocabulary, a different level of punctuation or a different language altogether can write it. It is laid out left-to-right in both directions, because what it holds is written in English — the same reason the shortcut field is never mirrored. The reset control beside the label puts the app's own text back.
+- **The prompt field is the one place a non-user-facing string is on screen**, and it is there because the user asked to see what the model is told. It is not translated, so switching the interface language does not change it.
 - **Attempts is a short, closed list** (1, 2, 3, 5 — three by default). A dropped connection or a 503 should not cost the user a paragraph they just spoke, and only failures another attempt could fix are retried; a rejected key is not one of them. Each attempt has its own 45-second budget rather than one long wait, and the backoff is exponential with jitter so a shared outage is not re-created by every client retrying in step.
 - **The silence stop is a short, closed list** (off, 3, 5, 10, 20 seconds) and its durations are locale-formatted. It is the setting most worth having: waiting for it is the longest part of the round trip, so the honest place to tune the wait is here rather than in the code.
 ### 4.3 The shortcut field
@@ -366,6 +370,9 @@ Error strings are part of the design. Every failure maps to one of a small, fixe
 | A retry says so, with numbers | Failing silently and retrying | "Trying again (2 of 3)…" explains the wait instead of restating it |
 | The window buttons are hidden until the pointer reaches for them | Reserving a band of the titlebar for them | The buttons belong to the window, not to the app: hiding them until hover is what lets the title sit on the centre line and the controls sit against the opposite edge in every language, with nothing pre-reserved |
 | A setting that needs a system permission is refused until the system grants it | Letting the setting be on and failing later | "Paste automatically" cannot work without Accessibility, so the switch goes back to off, macOS is asked to put up its own dialog, and the form shows one sentence and the two actions that fix it. The app never claims a capability the platform has not granted |
+| The settings field holds the instructions themselves | The field as a place for the user's own vocabulary, appended to the user turn, with the field starting empty — which is what this shipped with | Two texts doing one job: rules in code the user could not see, and a box the user could type into that only added to them. The box is the instructions now. Whatever is in it is what the model is told, which means the window shows exactly what the app does, and both the vocabulary and the rules are the user's to change |
+| The instructions are seeded into the field once, from a revision marker, never compared against the text | Deciding by looking at what is in the field | Comparing contents to decide whether to overwrite cannot tell an untouched install from a user who deliberately wrote something else, so it either clobbers an edit or leaves an old vocabulary-only value doing a whole job description's work. A revision marker in the settings file answers the one question that matters — was this written before the field changed meaning — and the merge on that upgrade keeps whatever the user had written underneath the rules |
+| The prompt field is left-to-right in both directions | Following the interface, as the transcript does | A transcript carries its own direction because its language varies; this field does not vary. It holds English, and English laid out right-to-left in a Persian window is unreadable. The shortcut field follows the same rule for the same reason |
 | The app asks macOS to say it, instead of only saying it itself | A sentence in a footnote | `isTrustedAccessibilityClient(true)` is the only way the user hears it in the system's own words, and polling lets the app notice the moment it is granted and finish the job |
 | The back control sits on the leading edge, with the window buttons given a band above the toolbar | Reserving a fixed column of the toolbar for the buttons | The reserved column pushed the back control 76px into the window, where it read as floating and was the first thing reported as a bug. The buttons belong to the window, not to the toolbar row, so they get the padding above it and every control keeps its own edge: back on the leading edge, actions on the trailing edge, in both directions |
 | Back is the chevron, Escape, or Cmd+[ | The chevron alone | Escape is the recorder's stop control while the microphone is open, so the settings screen needs a way back that is never ambiguous — and Cmd+[ is where macOS puts "back" |
@@ -411,7 +418,8 @@ Run through this before calling any screen finished.
 - [ ] No spinner.
 - [ ] The status line is empty at rest, and the line is reserved so nothing shifts.
 - [ ] Nothing in the titlebar reserves space for the window buttons, and the title is on the centre line in both directions.
-- [ ] A control named for its own vocabulary starts empty, never pre-filled with text the app also sends behind the scenes.
+- [ ] A field whose label shares its line with an action puts the label on the leading edge and the action on the trailing one.
+- [ ] The system prompt field shows exactly what is sent, starts as the app's own text, is left-to-right in both directions, and has a way back to the default.
 - [ ] A setting that depends on a system permission cannot be on without it, and the refusal names the pane and offers it.
 - [ ] Switch the interface to the other language and read every screen: no word from the first language survives, including placeholders, tooltips and the window's menus.
 - [ ] Read a transcript in the language the interface is *not* in: it is laid out the way its own language is read, and a foreign word inside it is placed correctly.
