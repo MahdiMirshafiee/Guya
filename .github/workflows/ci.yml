@@ -42,12 +42,29 @@ jobs:
       - run: npm run e2e
 
   package:
-    name: package check (${{ matrix.os }})
+    name: package check (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        include:
+          - name: macOS
+            os: macos-latest
+            target: mac
+            artifacts: |
+              dist/*.dmg
+              dist/*-mac.zip
+          - name: Windows
+            os: windows-latest
+            target: win
+            artifacts: |
+              dist/*.exe
+          - name: Linux
+            os: ubuntu-latest
+            target: linux
+            artifacts: |
+              dist/*.AppImage
+              dist/*.deb
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,15 +73,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run icons
+      # The deb metadata wants a project URL; CI is the only place that knows it.
+      - run: npm pkg set homepage="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
       # Packaging is the slowest failure to discover, so it is checked on every
-      # push rather than only when a release tag is cut.
-      - run: npx electron-builder --${{ matrix.os == 'macos-latest' && 'mac' || 'win' }} --publish never
+      # push rather than only when a release tag is cut. Each platform packages
+      # best on its own system: a deb needs dpkg, an AppImage needs appimagetool.
+      - run: npx electron-builder --${{ matrix.target }} --publish never
       - uses: actions/upload-artifact@v4
         with:
-          name: package-${{ matrix.os }}
-          path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.exe
+          name: package-${{ matrix.name }}
+          path: ${{ matrix.artifacts }}
           if-no-files-found: error
           retention-days: 7

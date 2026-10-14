@@ -1,6 +1,6 @@
 name: Release
 
-# A tag is the release. `scripts/release.sh 1.2.0` bumps the version, commits it,
+# A tag is the release: three platforms, one release page. `scripts/release.sh 1.2.0` bumps the version, commits it,
 # tags it and pushes — and this workflow turns that tag into published artifacts.
 on:
   push:
@@ -55,6 +55,12 @@ jobs:
             target: win
             artifacts: |
               dist/*.exe
+          - name: Linux
+            os: ubuntu-latest
+            target: linux
+            artifacts: |
+              dist/*.AppImage
+              dist/*.deb
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,6 +69,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run icons
+      # The deb metadata wants a project URL; CI is the only place that knows it.
+      - run: npm pkg set homepage="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
       # Signing is one secret away: set CSC_LINK and CSC_KEY_PASSWORD (macOS) or
       # the Windows equivalent and electron-builder picks them up. Without them
       # the artifacts build unsigned, which is what a local build produces too.
@@ -89,7 +97,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          mapfile -t files < <(find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' \) | sort)
+          mapfile -t files < <(find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) | sort)
           printf 'attaching:\n%s\n' "${files[@]}"
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${files[@]}" --clobber
