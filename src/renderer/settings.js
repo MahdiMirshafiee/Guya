@@ -23,6 +23,7 @@ const F = {
   pasteAfterTranscribe: document.getElementById('pasteAfterTranscribe'),
   launchAtLogin: document.getElementById('launchAtLogin'),
   uiLanguageSelect: document.getElementById('uiLanguageSelect'),
+  pasteFootnote: document.getElementById('pasteFootnote'),
   pasteNotice: document.getElementById('pasteNotice'),
   openAccessibility: document.getElementById('openAccessibility'),
   askAccessibility: document.getElementById('askAccessibility'),
@@ -182,6 +183,13 @@ function repaintSettings() {
   F.pasteAfterTranscribe.checked = !!settings.pasteAfterTranscribe;
   F.launchAtLogin.checked = !!settings.launchAtLogin;
   F.toggleKey.setAttribute('aria-label', F.apiKey.type === 'password' ? t('ui.showKey') : t('ui.hideKey'));
+
+  /* Automatic paste is a keystroke through the OS: macOS and Windows have one,
+   * Linux does not, so the row is disabled there rather than lying. */
+  const pasteSupported = appState.platform !== 'linux';
+  F.pasteAfterTranscribe.disabled = !pasteSupported;
+  F.pasteFootnote.textContent = pasteSupported ? t('settings.pasteFootnote') : t('settings.pasteUnsupported');
+  F.pasteFootnote.className = 'footnote' + (pasteSupported ? '' : ' footnote-quiet');
   F.refreshModels.setAttribute('aria-label', t('ui.refreshModels'));
   renderLanguages();
   renderModels();

@@ -75,6 +75,10 @@
   color: var(--text-2);
 }
 
+.footnote-quiet {
+  color: var(--text-3);
+}
+
 .footnote {
   margin: var(--s2) var(--s4) 0;
   font-size: var(--text-caption);

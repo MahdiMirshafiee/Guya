@@ -77,6 +77,7 @@ function publicState() {
     lastDurationMs: state.lastDurationMs,
     silenceStopMs: settings.silenceStopMs,
     retryNote: state.retryNote,
+    platform: process.platform,
     accent: systemAccent(),
     knownModels: KNOWN_MODELS,
     silenceChoices: SILENCE_CHOICES,

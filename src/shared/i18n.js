@@ -192,6 +192,10 @@
       en: 'macOS requires Accessibility permission before an app can type into another app. Until it is granted, this stays off.'
     },
     'ui.openSystemSettings': { fa: 'باز کردن تنظیمات سیستم', en: 'Open System Settings' },
+    'settings.pasteUnsupported': {
+      fa: 'تایپ خودکار در برنامه‌های دیگر روی لینوکس وجود ندارد؛ این گزینه در مک و ویندوز کار می‌کند.',
+      en: 'Typing into another app is not possible on Linux; this option works on macOS and Windows.'
+    },
     'ui.askMacos': { fa: 'اجازه گرفتن از مک', en: 'Ask macOS' },
     'ui.pasteGranted': { fa: 'اجازه داده شد', en: 'Permission granted' },
     'status.armed': { fa: 'در انتظار «{word}»…', en: 'Waiting for “{word}”…' },
