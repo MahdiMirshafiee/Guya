@@ -1,0 +1,346 @@
+/*
+ * Guya — the settings form.
+ *
+ * Grouped rows on the material, a section title above each group and a footnote
+ * below it. Text fields are a small label with the value under it and no chrome
+ * of their own; pickers and switches put the value on the trailing edge. Nothing
+ * here is a card inside a card, and nothing is prominent.
+ */
+.form {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-bottom: var(--s5);
+}
+
+.section-title {
+  margin: var(--s5) var(--s4) var(--s2);
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.group {
+  position: relative;
+  margin: 0 var(--s4);
+  padding: var(--s1) var(--s3);
+  background: var(--glass);
+  border: 1px solid var(--glass-line);
+  border-radius: var(--r-group);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 40px;
+}
+
+/* Hairline separators, inset so they start where the label does. */
+.row + .row::before,
+.row + .stack::before,
+.stack + .row::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
+  height: 1px;
+  background: var(--hair);
+}
+
+.row-label {
+  flex: 0 0 auto;
+  font-size: var(--text-body);
+  font-weight: 500;
+}
+
+.row-control {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+.row-control.end {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+}
+
+.value {
+  font-size: var(--text-body);
+  color: var(--text-2);
+}
+
+.footnote {
+  margin: var(--s2) var(--s4) 0;
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  color: var(--text-3);
+}
+
+/* ------------------------------------------------------- labelled field --- */
+
+.stack {
+  position: relative;
+  padding: var(--s2) 0;
+}
+
+.stack > label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.stack-control {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+/* Fields carry no chrome of their own: the label above them is the affordance. */
+.stack input[type='password'],
+.stack input[type='text'],
+.stack textarea,
+.row input[type='text'] {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: 400 var(--text-body) / 1.6 var(--font);
+  outline: none;
+}
+
+.stack textarea {
+  resize: vertical;
+  min-height: 44px;
+}
+
+.stack:focus-within > label {
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------------- pickers --- */
+
+.row select {
+  appearance: none;
+  max-width: 200px;
+  padding: 0 18px 0 0;
+  border: 0;
+  background-color: transparent;
+  color: var(--text-2);
+  font: 400 var(--text-body) var(--font);
+  text-align: end;
+  outline: none;
+  cursor: pointer;
+  background-repeat: no-repeat;
+  background-position: 100% 50%;
+  background-size: 11px 11px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1a6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+[dir='rtl'] .row select {
+  padding: 0 0 0 18px;
+  background-position: 0 50%;
+}
+
+.row-control input[type='text'] {
+  max-width: 200px;
+  text-align: end;
+}
+
+/* --------------------------------------------------------------- button --- */
+
+.icon-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.icon-btn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--field);
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ----------------------------------------------------------- key chips --- */
+
+.keys {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+  min-height: 26px;
+  cursor: pointer;
+}
+
+kbd.key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--s1);
+  border: 1px solid var(--field-line);
+  border-radius: 5px;
+  background: var(--field);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+  color: var(--text);
+  font: 500 var(--text-caption) var(--font);
+}
+
+.keys.capturing kbd.key {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.keys .hint-key {
+  color: var(--text-3);
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+
+/* --------------------------------------------------------------- switch --- */
+
+.switch {
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch .track {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--field);
+  border: 1px solid var(--field-line);
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.switch .knob {
+  position: absolute;
+  top: 1px;
+  inset-inline-start: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--dur) var(--ease);
+}
+
+.switch input:checked + .track {
+  background: var(--accent);
+  border-color: transparent;
+}
+
+[dir='rtl'] .switch input:checked + .track .knob {
+  transform: translateX(-13px);
+}
+
+[dir='ltr'] .switch input:checked + .track .knob {
+  transform: translateX(13px);
+}
+
+.switch input:focus-visible + .track {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* --------------------------------------------------------------- notice --- */
+
+/* An inline refusal with the two actions that can resolve it. Quiet on purpose:
+ * it is a sentence and two text buttons, not a dialog. */
+.notice {
+  margin: var(--s3) var(--s4) 0;
+  padding-left: var(--s2);
+  border-left: 2px solid color-mix(in srgb, var(--warn) 55%, transparent);
+}
+
+.notice-text {
+  margin: 0;
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--warn);
+}
+
+.notice-actions {
+  display: flex;
+  gap: var(--s3);
+  margin-top: var(--s2);
+}
+
+.btn-quiet {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: 500 var(--text-caption) var(--font);
+  cursor: pointer;
+}
+
+.btn-quiet:hover {
+  text-decoration: underline;
+}
+
+.notice.is-granted {
+  border-left-color: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+
+.notice.is-granted .notice-text {
+  color: var(--ok);
+}
+
+/* --------------------------------------------------------------- status --- */
+
+.status {
+  margin: var(--s4) var(--s4) 0;
+  min-height: 16px;
+  font-size: var(--text-caption);
+  color: var(--text-3);
+  text-align: center;
+}
+
+.status.ok {
+  color: var(--ok);
+}
+
+.status.warn {
+  color: var(--warn);
+}
+
+.status.error {
+  color: var(--err);
+}

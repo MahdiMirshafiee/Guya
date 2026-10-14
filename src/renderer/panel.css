@@ -1,0 +1,419 @@
+/*
+ * Guya — the shell, the recorder, and the token set everything else uses.
+ *
+ * Two views in one window: the recorder (a hero, a timer, one control) and the
+ * settings form it pushes over. Colour is semantic: the accent is inherited from
+ * the system, red means one thing and only while the microphone is live.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Type — four roles, nothing in between. */
+  --font: 'Inter', 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --text-title: 15px;
+  --text-body: 13px;
+  --text-read: 15px;
+  --text-caption: 11px;
+
+  /* Spacing — 4pt grid. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+
+  /* Shape — one container radius; controls are either chromeless or capsules. */
+  --r-group: 12px;
+
+  /* Motion — one duration, one curve. */
+  --ease: cubic-bezier(0.3, 0.8, 0.4, 1);
+  --dur: 0.18s;
+
+  /* Accent — replaced at runtime with the system accent colour. */
+  --accent: #0a7cff;
+
+  /* Glass surfaces (controls and grouped rows only). */
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-line: rgba(255, 255, 255, 0.55);
+  --glass-hi: rgba(255, 255, 255, 0.65);
+  --field: rgba(120, 120, 128, 0.11);
+  --field-line: rgba(0, 0, 0, 0.07);
+
+  /* Content. */
+  --text: #1d1d1f;
+  --text-2: #6e6e73;
+  --text-3: #98989d;
+  --hair: rgba(0, 0, 0, 0.09);
+  --window-tint: rgba(246, 246, 249, 0.66);
+
+  /* Status colours: one meaning each. */
+  --ok: #14875c;
+  --warn: #a96a05;
+  --err: #c0392b;
+
+  /* Live — the one non-semantic colour, and only while the microphone is open. */
+  --live: #ff3b30;
+  --live-ink: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --glass: rgba(255, 255, 255, 0.07);
+    --glass-line: rgba(255, 255, 255, 0.09);
+    --glass-hi: rgba(255, 255, 255, 0.1);
+    --field: rgba(255, 255, 255, 0.08);
+    --field-line: rgba(255, 255, 255, 0.1);
+    --text: #f5f5f7;
+    --text-2: #a1a1a6;
+    --text-3: #86868b;
+    --hair: rgba(255, 255, 255, 0.1);
+    --window-tint: rgba(22, 22, 26, 0.6);
+    --ok: #45d39a;
+    --warn: #e8a944;
+    --err: #ff7b72;
+    --live: #ff453a;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur: 0s;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Author display rules must not defeat the hidden attribute. */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  background: var(--window-tint);
+  color: var(--text);
+  font: 400 var(--text-body) / 1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.sprite {
+  display: none;
+}
+
+svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* --------------------------------------------------------------- views --- */
+
+.view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--window-tint);
+  transition: transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+
+/* The settings screen is pushed in from the inline end, like a navigation push. */
+.view-settings {
+  transform: translateX(var(--push-from, 100%));
+  opacity: 0;
+}
+
+body[data-view='settings'] .view-recorder {
+  transform: translateX(calc(var(--push-from, 100%) * -1));
+  opacity: 0;
+  pointer-events: none;
+}
+
+body[data-view='settings'] .view-settings {
+  transform: translateX(0);
+  opacity: 1;
+}
+
+[dir='rtl'] {
+  --push-from: -100%;
+}
+
+/* -------------------------------------------------------------- navbar --- */
+
+.navbar {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 44px;
+  padding: var(--s6) var(--s4) var(--s2);
+  -webkit-app-region: drag;
+}
+
+/* The window buttons only appear on hover, so nothing reserves space for them:
+ * the title sits on the centre line and the controls live against the physical
+ * right edge, opposite where the buttons appear. */
+body.is-mac .navbar {
+  padding-top: 22px;
+}
+
+.nav-title {
+  position: absolute;
+  inset-inline: 0;
+  text-align: center;
+  font-size: var(--text-title);
+  font-weight: 600;
+  letter-spacing: 0.1px;
+  pointer-events: none;
+}
+
+.nav-actions {
+  display: flex;
+  gap: var(--s1);
+  margin-left: auto;
+}
+
+/* Logical, so the back control hugs its own leading edge in both directions. */
+.nav-back {
+  margin-inline-end: auto;
+}
+
+/* The window buttons appear on the physical left in every language, and only the
+ * settings screen has a control on that side (the back chevron when the interface
+ * is left-to-right), so only it needs the gap. */
+body.is-mac .view-settings .navbar {
+  padding-left: 76px;
+}
+
+.nav-btn {
+  -webkit-app-region: no-drag;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--dur) var(--ease);
+}
+
+.nav-btn:hover {
+  background: var(--field);
+}
+
+.nav-btn .nav-btn-swap {
+  display: none;
+}
+
+.nav-btn.is-done .nav-btn-swap {
+  display: block;
+}
+
+.nav-btn.is-done > svg:first-child {
+  display: none;
+}
+
+[dir='rtl'] .nav-back svg {
+  transform: scaleX(-1);
+}
+
+/* ------------------------------------------------------------ recorder --- */
+
+.stage {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--s3) var(--s6) 0;
+  overflow: hidden;
+}
+
+/* No transcript yet: the hero is centred in the space that is left over. */
+body[data-transcript='false'] .stage {
+  justify-content: center;
+}
+
+body[data-transcript='true'] .stage {
+  justify-content: flex-start;
+}
+
+body[data-transcript='true'] .console {
+  padding-top: var(--s6);
+}
+
+.console {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s5);
+}
+
+/* Content: a drawn meter, a timer, one line of state. No material anywhere. */
+.waveform {
+  width: 100%;
+  height: 56px;
+  display: block;
+}
+
+/* The loader takes the timer's place, so the timer steps back to a caption. */
+.loader {
+  display: block;
+  width: 96px;
+  height: 96px;
+  margin: -10px 0;
+}
+
+body[data-phase='transcribing'] .timer {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.timer {
+  font-size: 56px;
+  font-weight: 500;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  /* The rounded design is used for the timer and nothing else: on a circular hero
+   * control it reads as intentional. */
+  font-family: ui-rounded, 'SF Pro Rounded', 'Inter', 'Vazirmatn', system-ui, sans-serif;
+  font-feature-settings: 'tnum' 1;
+}
+
+.status-line {
+  margin: 0;
+  min-height: 20px;
+  max-width: 100%;
+  text-align: center;
+  font-size: var(--text-body);
+  font-weight: 500;
+  color: var(--text-2);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.status-line.is-shown {
+  opacity: 1;
+}
+
+.status-line.is-error {
+  color: var(--err);
+}
+
+/* The only flexible region: short transcripts sit on one line, long ones scroll. */
+.transcript p {
+  margin: 0 0 var(--s2);
+}
+
+.transcript p:last-child {
+  margin-bottom: 0;
+}
+
+.transcript {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding-top: var(--s5);
+  padding-bottom: var(--s4);
+  font-size: var(--text-read);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* -------------------------------------------------------------- button --- */
+
+.cluster {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  padding: var(--s3) 0 var(--s5);
+}
+
+.record {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  padding: 0;
+  border: 0.5px solid var(--glass-line);
+  border-radius: 50%;
+  color: var(--text);
+  cursor: pointer;
+  background: radial-gradient(120% 105% at 50% -10%, var(--glass-hi) 0%, var(--glass) 46%, var(--glass) 100%);
+  box-shadow: inset 0 1px 0 var(--glass-hi);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+
+.record:hover:not(:disabled) {
+  transform: scale(1.02);
+}
+
+.record:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.record:disabled {
+  cursor: default;
+}
+
+.record .glyph {
+  width: 34px;
+  height: 34px;
+  stroke-width: 1.8;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.record .glyph-stop {
+  display: none;
+}
+
+/* Live: the material is stained, not the glyph. Unambiguous on purpose. */
+body[data-phase='recording'] .record {
+  background: var(--live);
+  border-color: transparent;
+  color: var(--live-ink);
+}
+
+body[data-phase='recording'] .record .glyph-mic {
+  display: none;
+}
+
+body[data-phase='recording'] .record .glyph-stop {
+  display: block;
+}
+
+body[data-phase='starting'] .record,
+body[data-phase='transcribing'] .record {
+  color: var(--text-2);
+}
+
+/* While a transcript is being fetched the orb in the console is the loader, so
+ * the control simply steps back and stops accepting input. */
+body[data-phase='transcribing'] .record {
+  opacity: 0.5;
+}

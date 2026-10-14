@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'none'; object-src 'none'; frame-src 'none'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'"
+    />
+    <title>Guya</title>
+    <link rel="stylesheet" href="./fonts.css" />
+    <link rel="stylesheet" href="./panel.css" />
+    <link rel="stylesheet" href="./form.css" />
+  </head>
+  <body data-view="recorder">
+    <!-- Icon set (Lucide, MIT) -->
+    <svg class="sprite" aria-hidden="true">
+      <symbol id="i-app" viewBox="0 0 48 48">
+        <circle cx="24" cy="24" r="21" fill="#15141d" />
+        <circle cx="24" cy="24" r="19" fill="#ff6c76" opacity="0.75" />
+        <ellipse cx="17" cy="18" rx="9" ry="8" fill="#ffa45c" opacity="0.85" />
+        <ellipse cx="29" cy="30" rx="8" ry="7" fill="#ff5684" opacity="0.8" />
+        <ellipse cx="25" cy="19" rx="7" ry="6" fill="#ffffff" opacity="0.45" />
+      </symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24"><path d="M5 11a7 7 0 0 0 14 0" /><rect x="9" y="2.5" width="6" height="10" rx="3" /><path d="M12 18v3.5" /></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></symbol>
+      <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0-1.2-2.9 2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 2.9-1.2 2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9 2 2 0 1 1 0 4 1.7 1.7 0 0 0-1.5 1z" /></symbol>
+      <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" /></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2.5" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.8l4.2 4.2L19 7.2" /></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8" /><path d="M21 3v5h-5" /></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12S18 18.5 12 18.5 2.5 12 2.5 12z" /><circle cx="12" cy="12" r="3" /></symbol>
+      <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M10.7 6.2A9.9 9.9 0 0 1 12 6c6 0 9.5 6 9.5 6a17 17 0 0 1-3 3.7M6.4 7.6A17 17 0 0 0 2.5 12S6 18 12 18a9.6 9.6 0 0 0 3.6-.7" /><path d="M3 3l18 18" /></symbol>
+    </svg>
+
+    <!-- The product: one screen, one control, one result. -->
+    <div class="view view-recorder" id="view-recorder">
+      <header class="navbar">
+        <span class="nav-title" data-i18n="ui.title"></span>
+        <div class="nav-actions">
+          <button id="copyTranscript" class="nav-btn" type="button" hidden>
+            <svg aria-hidden="true"><use href="#i-copy" /></svg>
+            <svg class="nav-btn-swap" aria-hidden="true"><use href="#i-check" /></svg>
+          </button>
+          <button id="openSettings" class="nav-btn" type="button">
+            <svg aria-hidden="true"><use href="#i-gear" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="stage" id="stage">
+        <div class="console">
+          <canvas id="waveform" class="waveform" aria-hidden="true"></canvas>
+          <canvas id="loader" class="loader" aria-hidden="true" hidden></canvas>
+          <div class="timer" id="timer">0:00</div>
+          <p class="status-line" id="status"></p>
+        </div>
+        <div class="transcript" id="transcript" hidden></div>
+      </main>
+
+      <footer class="cluster">
+        <button id="record" class="record" type="button">
+          <svg class="glyph glyph-mic" aria-hidden="true"><use href="#i-mic" /></svg>
+          <svg class="glyph glyph-stop" aria-hidden="true"><use href="#i-stop" /></svg>
+        </button>
+      </footer>
+    </div>
+
+    <!-- Everything else: one settings screen, grouped, with footers. -->
+    <div class="view view-settings" id="view-settings" aria-hidden="true" inert>
+      <header class="navbar">
+        <button id="closeSettings" class="nav-btn nav-back" type="button">
+          <svg aria-hidden="true"><use href="#i-chevron" /></svg>
+        </button>
+        <span class="nav-title" data-i18n="ui.settings"></span>
+        <span class="nav-actions"></span>
+      </header>
+
+      <main class="form">
+        <h2 class="section-title" data-i18n="ui.engineName"></h2>
+        <div class="group">
+          <div class="stack">
+            <label for="apiKey" data-i18n="ui.apiKey"></label>
+            <div class="stack-control">
+              <input id="apiKey" type="password" dir="ltr" autocomplete="off" spellcheck="false" data-i18n-placeholder="ui.apiKeyExample" />
+              <button id="toggleKey" class="icon-btn" type="button">
+                <svg aria-hidden="true"><use href="#i-eye" id="toggleKeyIcon" /></svg>
+              </button>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label" data-i18n="ui.model"></span>
+            <div class="row-control">
+              <select id="modelSelect" dir="ltr"></select>
+              <input id="modelCustom" type="text" dir="ltr" spellcheck="false" hidden />
+              <button id="refreshModels" class="icon-btn" type="button">
+                <svg aria-hidden="true"><use href="#i-refresh" /></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+        <p class="footnote" data-i18n="settings.engineFootnote"></p>
+
+        <h2 class="section-title" data-i18n="ui.dictation"></h2>
+        <div class="group">
+          <div class="row">
+            <span class="row-label" data-i18n="ui.shortcut"></span>
+            <div class="row-control">
+              <div id="shortcut" class="keys" tabindex="0" role="button"></div>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label" data-i18n="ui.spokenLanguage"></span>
+            <div class="row-control">
+              <select id="language"></select>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label" data-i18n="ui.silence"></span>
+            <div class="row-control">
+              <select id="silenceStop"></select>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label" data-i18n="ui.attempts"></span>
+            <div class="row-control">
+              <select id="attempts"></select>
+            </div>
+          </div>
+          <div class="stack">
+            <label for="prompt" data-i18n="ui.prompt"></label>
+            <textarea id="prompt" rows="2" spellcheck="false" dir="auto"></textarea>
+          </div>
+        </div>
+        <p class="footnote" data-i18n="settings.promptFootnote"></p>
+
+        <h2 class="section-title" data-i18n="ui.output"></h2>
+        <div class="group">
+          <div class="row">
+            <span class="row-label" data-i18n="ui.copy"></span>
+            <div class="row-control end">
+              <label class="switch"><input type="checkbox" id="copyToClipboard" /><span class="track"><span class="knob"></span></span></label>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label" data-i18n="ui.paste"></span>
+            <div class="row-control end">
+              <label class="switch"><input type="checkbox" id="pasteAfterTranscribe" /><span class="track"><span class="knob"></span></span></label>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label" data-i18n="ui.launchAtLogin"></span>
+            <div class="row-control end">
+              <label class="switch"><input type="checkbox" id="launchAtLogin" /><span class="track"><span class="knob"></span></span></label>
+            </div>
+          </div>
+        </div>
+        <p class="footnote" data-i18n="settings.pasteFootnote"></p>
+
+        <!-- Shown only when the system refused the permission this feature needs. -->
+        <div class="notice" id="pasteNotice" hidden>
+          <p class="notice-text" data-i18n="settings.pasteNeedsPermission"></p>
+          <div class="notice-actions">
+            <button id="openAccessibility" class="btn-quiet" type="button" data-i18n="ui.openSystemSettings"></button>
+            <button id="askAccessibility" class="btn-quiet" type="button" data-i18n="ui.askMacos"></button>
+          </div>
+        </div>
+
+        <h2 class="section-title" data-i18n="ui.about"></h2>
+        <div class="group">
+          <div class="row">
+            <span class="row-label" data-i18n="ui.interfaceLanguage"></span>
+            <div class="row-control">
+              <select id="uiLanguageSelect"></select>
+            </div>
+          </div>
+          <div class="row">
+            <span class="row-label" data-i18n="ui.version"></span>
+            <div class="row-control end"><span class="value" id="version"></span></div>
+          </div>
+          <div class="row">
+            <span class="row-label" data-i18n="ui.processing"></span>
+            <div class="row-control end"><span class="value" data-i18n="ui.processingValue"></span></div>
+          </div>
+        </div>
+
+        <p class="status" id="settingsStatus"></p>
+      </main>
+    </div>
+
+    <script src="/shared/accelerator.js"></script>
+    <script src="/shared/i18n.js"></script>
+    <script src="/shared/bidi.js"></script>
+    <script src="./orb.js"></script>
+    <script src="./panel.js"></script>
+    <script src="./settings.js"></script>
+  </body>
+</html>
