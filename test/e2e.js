@@ -18,6 +18,7 @@ const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const i18n = require('../src/shared/i18n.js');
+const GuyaPrompt = require('../src/shared/prompt.js');
 /* The header carries the app's name in whichever language the window is in. The
  * test does not care which, only that it is the name and not a task sentence. */
 const APP_TITLES = ['fa', 'en'].map((lang) => i18n.t(lang, 'ui.title'));
@@ -314,6 +315,42 @@ class Cdp {
   check('the attempt count is offered', (await panel.eval(`document.getElementById('attempts').options.length`)) >= 3);
   check('durations are locale-formatted', /[۰-۹]/.test(await panel.eval(`document.getElementById('silenceStop').options[1].textContent`)));
   check('the key is present', (await panel.eval(`document.getElementById('apiKey').value.length`)) > 0);
+
+  /* The field holds the instructions the model is given, so the user can read and
+   * change them. It is English in a Persian window too, and laid out left-to-right
+   * whatever the window's direction is. */
+  const promptField = await panel.eval(`(() => {
+    const field = document.getElementById('prompt');
+    return { value: field.value, dir: field.getAttribute('dir'), computed: getComputedStyle(field).direction,
+             reset: !!document.getElementById('resetPrompt') };
+  })()`);
+  check('the prompt field is filled with the instructions', promptField.value === GuyaPrompt.DEFAULT_PROMPT,
+    promptField.value.slice(0, 60));
+  check('and stays English', !/[\u0600-\u06FF]/.test(promptField.value));
+  check('the field is left-to-right in a right-to-left window', promptField.dir === 'ltr' && promptField.computed === 'ltr',
+    JSON.stringify({ dir: promptField.dir, computed: promptField.computed }));
+  check('the default prompt can be restored', promptField.reset);
+  await panel.eval(`(() => {
+    const field = document.getElementById('prompt');
+    field.value = 'Say only what is said.';
+    field.dispatchEvent(new Event('blur'));
+    return true;
+  })()`);
+  await sleep(600);
+  const edited = await panel.eval(`guya.getAppInfo().then((i) => i.settings.prompt)`);
+  check('an edit is saved without a button', edited === 'Say only what is said.', edited);
+  await panel.eval(`document.getElementById('resetPrompt').click()`);
+  await sleep(600);
+  const restored = await panel.eval(`guya.getAppInfo().then((i) => i.settings.prompt)`);
+  check('and the default prompt can be put back', restored === GuyaPrompt.DEFAULT_PROMPT, restored.slice(0, 40));
+  await panel.eval(`(() => {
+    const field = document.getElementById('prompt');
+    field.value = GuyaPrompt.DEFAULT_PROMPT;
+    field.dispatchEvent(new Event('blur'));
+    return true;
+  })()`);
+  await sleep(600);
+
   check('the shortcut is drawn as key caps', (await panel.eval(`document.querySelectorAll('#shortcut kbd').length`)) >= 2);
   check('every group has a title and most have a footnote', (await panel.eval(`document.querySelectorAll('.section-title').length`)) >= 4 && (await panel.eval(`document.querySelectorAll('.footnote').length`)) >= 3);
   check('no wake-word setting exists any more', (await panel.eval(`document.querySelectorAll('#wakeEnabled,#wakeWord').length`)) === 0);

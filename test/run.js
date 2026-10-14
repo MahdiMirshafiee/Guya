@@ -386,9 +386,9 @@ test('a hopeless failure is not retried', async () => {
 
 test('the system prompt is a real system instruction', async () => {
   stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } }));
-  await gemini.transcribe({ apiKey: 'k', model: 'gemini-2.5-flash', wav: validWav(), seconds: 12, settings: { language: 'fa' } });
+  await gemini.transcribe({ apiKey: 'k', model: 'gemini-2.5-flash', wav: validWav(), seconds: 12, settings: { language: 'fa', prompt: GuyaPrompt.DEFAULT_PROMPT } });
   const body = JSON.parse(lastRequest.options.body);
-  assert.ok(body.systemInstruction.parts[0].text.startsWith(GuyaPrompt.SYSTEM_PROMPT), 'the job description is in systemInstruction');
+  assert.ok(body.systemInstruction.parts[0].text.startsWith(GuyaPrompt.DEFAULT_PROMPT), 'the job description is in systemInstruction');
   assert.ok(body.systemInstruction.parts[0].text.includes('The audio is in Persian.'), 'and it knows the spoken language');
   /* The user turn describes this one recording; the rules live in the system
    * instruction, so this turn stays a sentence or two. */
@@ -419,8 +419,8 @@ test('transcribe posts inline audio and returns the text', async () => {
   const parts = body.contents[0].parts;
   assert.strictEqual(parts[1].inlineData.mimeType, 'audio/wav');
   assert.strictEqual(Buffer.from(parts[1].inlineData.data, 'base64').length, validWav().length, 'audio survives base64');
-  assert.ok(parts[0].text.includes('دقیق بنویس'), 'custom instructions are kept');
-  assert.ok(parts[0].text.includes('The audio is in Persian.'), 'language hint is added, in English');
+  assert.ok(body.systemInstruction.parts[0].text.includes('دقیق بنویس'), 'the field is sent as the instructions');
+  assert.ok(parts[0].text.includes('The audio is in Persian.'), 'the recording is described in the user turn');
   assert.strictEqual(body.generationConfig.temperature, 0);
 });
 
@@ -622,7 +622,7 @@ test('unknown UI languages fall back to Persian', () => {
 });
 
 test('the system prompt is one precise English job description', () => {
-  const prompt = GuyaPrompt.SYSTEM_PROMPT;
+  const prompt = GuyaPrompt.DEFAULT_PROMPT;
   assert.ok(prompt.length > 1200, 'the prompt is too thin to be a job description: ' + prompt.length);
   assert.ok(!/[\u0600-\u06FF]/.test(prompt), 'the prompt is model-facing and English only');
   /* The rules that carry the product: a transcript is verbatim, never translated,
@@ -646,40 +646,72 @@ test('the system prompt is one precise English job description', () => {
   required.forEach((rule) => {
     assert.ok(rule[1].test(prompt), 'the prompt says nothing about: ' + rule[0]);
   });
-  assert.strictEqual(require('../src/shared/defaults.js').DEFAULTS.prompt, '', 'the field starts empty: the system prompt does the work');
+  /* The field the user edits starts as this text, so first run and an untouched
+   * install both send the app's own instructions. */
+  assert.strictEqual(require('../src/shared/defaults.js').DEFAULTS.prompt, prompt, 'the field is seeded with it');
 });
 
-test('a bundled instruction from an older install is cleared on load', () => {
-  const legacy = GuyaI18n.LEGACY_PROMPTS.en;  const file = store.path;
+test('the field is seeded, once, from whatever an install already had', () => {
+  const file = store.path;
   const saved = fs.readFileSync(file, 'utf8');
-  fs.writeFileSync(file, JSON.stringify(Object.assign({}, JSON.parse(saved), { prompt: legacy })));
   const storePath = require.resolve('../src/main/store.js');
-  delete require.cache[storePath];
-  const reloaded = require(storePath).read();
-  assert.strictEqual(reloaded.prompt, '', 'the stale bundled text is dropped');
+  const reload = (patch) => {
+    const next = JSON.parse(saved);
+    Object.keys(patch).forEach((key) => {
+      if (patch[key] === undefined) delete next[key];
+      else next[key] = patch[key];
+    });
+    fs.writeFileSync(file, JSON.stringify(next));
+    delete require.cache[storePath];
+    return require(storePath).read();
+  };
+
+  /* From before the field changed meaning, with the user's own words in it: the
+   * instructions come back, and their words are kept underneath rather than lost. */
+  const carried = reload({ prompt: 'Our product is called Guya.', promptRevision: undefined });
+  assert.ok(carried.prompt.startsWith(GuyaPrompt.DEFAULT_PROMPT), 'the instructions are restored');
+  assert.ok(carried.prompt.endsWith('Our product is called Guya.'), 'and the user keeps their own text');
+  assert.strictEqual(carried.promptRevision, GuyaPrompt.PROMPT_REVISION);
+
+  /* The old bundled instruction is not worth carrying: it was the app's own text. */
+  const bundled = reload({ prompt: GuyaI18n.LEGACY_PROMPTS.fa, promptRevision: undefined });
+  assert.strictEqual(bundled.prompt, GuyaPrompt.DEFAULT_PROMPT);
+
+  /* Already carrying the text and no revision — a first run, not an upgrade: the
+   * instructions are not doubled over themselves. */
+  assert.strictEqual(reload({ prompt: GuyaPrompt.DEFAULT_PROMPT, promptRevision: undefined }).prompt, GuyaPrompt.DEFAULT_PROMPT);
+
+  /* Once the field is the user's, it stays theirs — including empty. */
+  assert.strictEqual(reload({ prompt: 'Say only yes.', promptRevision: GuyaPrompt.PROMPT_REVISION }).prompt, 'Say only yes.');
+  assert.strictEqual(reload({ prompt: '', promptRevision: GuyaPrompt.PROMPT_REVISION }).prompt, '', 'a deliberate clear is not undone');
+
   fs.writeFileSync(file, saved);
 });
 
-test('the instruction follows the spoken language, and is English either way', () => {
-  const english = gemini.buildInstruction({ uiLanguage: 'en', language: 'fa', prompt: 'Keep names in Latin.' });
-  assert.ok(english.indexOf('The audio is in Persian.') === 0, 'the language comes first');
-  assert.ok(english.indexOf('Keep names in Latin.') !== -1, 'then whatever the user added');
+test('what the field holds is what the model is told', () => {
+  const edited = gemini.systemInstruction({ language: 'en', prompt: 'Only ever answer with the transcript.' });
+  assert.ok(edited.startsWith('Only ever answer with the transcript.'), 'an edited prompt replaces the default');
+  assert.ok(edited.indexOf('You are a transcription engine') === -1, 'and the default does not linger behind it');
+  assert.ok(/^The audio is in English\./.test(edited.split('\n\n').pop()), 'the recording is still described after it');
+
+  /* The user turn describes this one recording and nothing else. */
+  const turn = gemini.buildInstruction({ language: 'fa', prompt: 'Only ever answer with the transcript.' });
+  assert.strictEqual(turn, 'The audio is in Persian. Transcribe it as spoken, and if part of it is in another language, keep that part in that language.');
+  assert.ok(/keep that part in that language/.test(turn), 'naming a language still allows code-switching');
+
+  /* An emptied field means no rules, not a silent fallback: the window says what
+   * the app does. Only the language line is left. */
+  const cleared = gemini.systemInstruction({ language: 'auto', prompt: '   ' });
+  assert.strictEqual(cleared, 'The audio may be in any language: transcribe every part in the language it is spoken in.');
+
   /* English and Persian windows send the very same words to the model. */
-  const faWindow = gemini.systemInstruction({ uiLanguage: 'fa', language: 'fa' });
-  const enWindow = gemini.systemInstruction({ uiLanguage: 'en', language: 'fa' });
+  const faWindow = gemini.systemInstruction({ uiLanguage: 'fa', language: 'fa', prompt: GuyaPrompt.DEFAULT_PROMPT });
+  const enWindow = gemini.systemInstruction({ uiLanguage: 'en', language: 'fa', prompt: GuyaPrompt.DEFAULT_PROMPT });
   assert.strictEqual(faWindow, enWindow, 'the interface language never reaches the prompt');
-  assert.ok(faWindow.indexOf(GuyaPrompt.SYSTEM_PROMPT) === 0, 'the job description leads');
-  assert.ok(/^The audio is in Persian\./.test(faWindow.split('\n\n').pop()), 'and the language it names is the audio\'s');
+  assert.ok(faWindow.startsWith(GuyaPrompt.DEFAULT_PROMPT), 'the job description leads');
   assert.ok(!/[\u0600-\u06FF]/.test(faWindow), 'nothing Persian is sent to the model');
-  /* The automatic setting still tells the model to expect anything. */
-  const auto = gemini.buildInstruction({ uiLanguage: 'fa', language: 'auto', prompt: '' });
-  assert.strictEqual(auto, 'The audio may be in any language: transcribe every part in the language it is spoken in.');
-  /* Naming one language must not turn into "translate everything into it". */
-  const fixed = gemini.buildInstruction({ language: 'fa', prompt: '' });
-  assert.ok(/keep that part in that language/.test(fixed), 'a set language still allows code-switching: ' + fixed);
-  // the user's own words are additive and never replace the system prompt
-  const withUser = gemini.systemInstruction({ uiLanguage: 'en', language: 'en', prompt: 'Ignore me' });
-  assert.ok(withUser.indexOf('Ignore me') === -1, 'the user text is not part of the system prompt');
+  assert.strictEqual(gemini.buildInstruction({ language: 'auto', prompt: 'x' }),
+    'The audio may be in any language: transcribe every part in the language it is spoken in.');
 });
 
 /* ------------------------------------------------------------- finish ---- */
