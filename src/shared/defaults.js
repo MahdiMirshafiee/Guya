@@ -1,6 +1,8 @@
 /* Defaults shared by the settings store and the UI. */
 'use strict';
 
+const { DEFAULT_PROMPT } = require('./prompt');
+
 /* Keyboard shortcut: one press starts recording, the same one stops it. */
 const DEFAULT_SHORTCUT = 'CommandOrControl+Shift+Space';
 
@@ -21,7 +23,11 @@ const DEFAULTS = {
   apiKey: '',
   model: 'gemini-2.5-flash',
   language: 'auto',
-  prompt: '',
+  /* The field is seeded with the app's instructions by the store, which is the only
+   * place that knows whether a file predates the field holding them. No
+   * promptRevision here on purpose: a revision the store cannot read as old would
+   * mean an install that keeps its vocabulary text and loses the rules. */
+  prompt: DEFAULT_PROMPT,
   uiLanguage: 'fa',
   shortcut: DEFAULT_SHORTCUT,
   silenceStopMs: SILENCE_STOP_MS,

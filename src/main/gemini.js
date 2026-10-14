@@ -7,7 +7,7 @@
 'use strict';
 
 const { t } = require('../shared/i18n');
-const { SYSTEM_PROMPT, languageLine } = require('../shared/prompt');
+const { languageLine } = require('../shared/prompt');
 
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
 /* A dictation is short; waiting two minutes on one attempt is worse than trying
@@ -67,19 +67,17 @@ function statusVars(status) {
   return { status: status };
 }
 
-/* The model's job description. It never changes with the user's wording, so it is
- * sent as systemInstruction rather than being folded into the user turn, and it is
- * written in English whatever language the window is in: nobody reads it but the
- * model, and one text cannot drift out of step with itself. */
+/* The model's job description: whatever is in the settings field, which starts as
+ * the app's own text and is the user's to rewrite. It is sent as systemInstruction
+ * rather than folded into the user turn, because it is the model's role and not the
+ * user's message. The spoken language of the recording is stated next to it. */
 function systemInstruction(settings) {
-  return `${SYSTEM_PROMPT}\n\n${languageLine(settings.language)}`;
+  return [(settings.prompt || '').trim(), languageLine(settings.language)].filter(Boolean).join('\n\n');
 }
 
-/* The user turn carries only what is specific to this recording: the language
- * hint and whatever the user asked for on top. */
+/* The user turn carries only what is specific to this recording. */
 function buildInstruction(settings) {
-  const base = (settings.prompt || '').trim();
-  return [languageLine(settings.language), base].filter(Boolean).join('\n');
+  return languageLine(settings.language);
 }
 
 /* Resolving and connecting to the provider takes a few hundred milliseconds; it
