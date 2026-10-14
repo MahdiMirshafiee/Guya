@@ -27,6 +27,7 @@
       "package.json"
     ],
     "mac": {
+      "icon": "build/icon.png",
       "category": "public.app-category.productivity",
       "target": [
         "dmg",
@@ -37,6 +38,7 @@
       }
     },
     "win": {
+      "icon": "build/icon-shape.png",
       "target": [
         "nsis",
         "portable"

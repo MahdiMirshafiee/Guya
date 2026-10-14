@@ -2,8 +2,9 @@
  * Generates the app icon from a small vector-ish description — no dependency,
  * no binary assets checked in: `npm run icons` regenerates it.
  *
- * The shape is a squircle with an Apple-like vertical gradient, so it sits
- * comfortably next to native icons in the Dock and the taskbar.
+ * The icon is the product's own object — the orb — drawn as a lit sphere on a
+ * tile sized to Apple's grid, so it sits comfortably next to native icons in the
+ * Dock and the taskbar.
  */
 'use strict';
 
@@ -108,44 +109,6 @@ function rasterize(size, layers, ss) {
   return out;
 }
 
-/* ------------------------------------------------------------ shapes ----- */
-
-function distanceToSegment(px, py, ax, ay, bx, by) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lengthSq = dx * dx + dy * dy;
-  let t = lengthSq === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / lengthSq;
-  t = Math.max(0, Math.min(1, t));
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-}
-
-/* Apple's icon silhouette: a superellipse with generous corner rounding. */
-function squircle(inset, exponent) {
-  const n = exponent || 5;
-  const half = 0.5 - (inset === undefined ? 0.09 : inset);
-  return (u, v) => {
-    const x = Math.abs((u - 0.5) / half);
-    const y = Math.abs((v - 0.5) / half);
-    return Math.pow(x, n) + Math.pow(y, n) <= 1;
-  };
-}
-
-/* A microphone: capsule, half-ring, stem, base. `zoom` is a shrink factor, so
- * larger values mean more padding inside the unit box. */
-function microphone(zoom) {
-  const scale = zoom;
-  return (u, v) => {
-    const x = (u - 0.5) * scale + 0.5;
-    const y = (v - 0.5) * scale + 0.5;
-
-    const capsule = distanceToSegment(x, y, 0.5, 0.185, 0.5, 0.375) <= 0.15;
-    const ring = Math.abs(Math.hypot(x - 0.5, y - 0.4) - 0.28) <= 0.055 && y >= 0.4;
-    const stem = Math.abs(x - 0.5) <= 0.05 && y >= 0.7 && y <= 0.85;
-    const base = Math.abs(y - 0.89) <= 0.035 && x >= 0.33 && x <= 0.67;
-    return capsule || ring || stem || base;
-  };
-}
-
 /* ------------------------------------------------------------- output ---- */
 
 /* The orb's own palettes, copied from src/renderer/orb.js so the icon and the app
@@ -168,12 +131,12 @@ const CLOUD_GEOMETRY = [
   { x: -0.34, y: 0.42, size: 0.6, alpha: 0.6 }
 ];
 const TILE_GRADIENT = [
-  { at: 0, rgb: [52, 52, 74] },
-  { at: 0.5, rgb: [32, 31, 46] },
-  { at: 1, rgb: [16, 16, 24] }
+  { at: 0, rgb: [80, 80, 110] },
+  { at: 0.5, rgb: [48, 47, 70] },
+  { at: 1, rgb: [28, 28, 42] }
 ];
 
-function tileAt(v) {
+function tileGradient(v) {
   const clamped = Math.max(0, Math.min(1, v));
   for (let i = 1; i < TILE_GRADIENT.length; i++) {
     const from = TILE_GRADIENT[i - 1];
@@ -186,122 +149,162 @@ function tileAt(v) {
   return TILE_GRADIENT[TILE_GRADIENT.length - 1].rgb.slice();
 }
 
-const GRADIENT = [
-  { at: 0, rgb: [142, 152, 255] },
-  { at: 0.38, rgb: [92, 94, 240] },
-  { at: 0.72, rgb: [108, 76, 232] },
-  { at: 1, rgb: [58, 40, 150] }
-];
+/* ------------------------------------------------------------- the orb ---- */
 
-function gradientAt(v) {
-  const clamped = Math.max(0, Math.min(1, v));
-  for (let i = 1; i < GRADIENT.length; i++) {
-    const from = GRADIENT[i - 1];
-    const to = GRADIENT[i];
-    if (clamped <= to.at) {
-      const k = (clamped - from.at) / (to.at - from.at || 1);
-      return [0, 1, 2].map((channel) => from.rgb[channel] + (to.rgb[channel] - from.rgb[channel]) * k);
+/* The icon is a lit sphere sitting on a tile, not a flat blob. Everything below
+ * is per-pixel: a normal on the sphere, one light, and the terms a physical ball
+ * has — diffuse, a tight specular, a rim, a bounce from below and the shadow it
+ * casts on the tile. That is what makes it read as an object rather than a
+ * circle of colour. */
+const LIGHT = (() => {
+  const v = [-0.42, -0.62, 0.66];
+  const length = Math.hypot(v[0], v[1], v[2]);
+  return v.map((n) => n / length);
+})();
+
+/* A superellipse distance: 1 at the edge of the shape, larger outside it. */
+function shapeDistance(u, v, inset, exponent) {
+  const half = 0.5 - inset;
+  const x = Math.abs((u - 0.5) / half);
+  const y = Math.abs((v - 0.5) / half);
+  return Math.pow(Math.pow(x, exponent) + Math.pow(y, exponent), 1 / exponent);
+}
+
+/* The interior, as an albedo: the glass the sphere is made of, with the clouds
+ * composited over it in order, the way the renderer draws them. Averaging them
+ * into one colour is what turns four lights into a single muddy blur. */
+const GLASS_BASE = [104, 62, 86]; // the glass itself, already lit from within
+const GLASS_TINT = [150, 84, 104];
+
+function cloudAlbedo(nx, ny) {
+  const colour = GLASS_BASE.slice();
+  const radial = Math.max(0, 1 - Math.hypot(nx, ny));
+  for (let channel = 0; channel < 3; channel++) {
+    colour[channel] = colour[channel] * (1 - radial * 0.55) + GLASS_TINT[channel] * radial * 0.55;
+  }
+  for (let i = 0; i < CLOUD_GEOMETRY.length; i++) {
+    const cloud = CLOUD_GEOMETRY[i];
+    const d = Math.hypot(nx - cloud.x, ny - cloud.y) / cloud.size;
+    if (d >= 1) continue;
+    const falloff = Math.min(1, Math.pow(1 - d, 1.05) * (cloud.alpha + 0.28));
+    for (let channel = 0; channel < 3; channel++) {
+      colour[channel] = CLOUD_COLOURS[i][channel] * falloff + colour[channel] * (1 - falloff);
     }
   }
-  return GRADIENT[GRADIENT.length - 1].rgb.slice();
+  return colour.map((c) => Math.min(255, c));
 }
 
-/* Soft radial blob, the same shape the canvas draws: full strength at the centre,
- * fading to nothing at the edge through the same intermediate stops. */
-function blob(x, y, cx, cy, radius, alpha) {
-  const d = Math.hypot(x - cx, y - cy);
-  if (d >= radius) return 0;
-  const t = d / radius;
-  const falloff = t < 0.45 ? 1 - t * (0.32 / 0.45) : t < 0.75 ? 0.68 - ((t - 0.45) / 0.3) * 0.42 : 0.26 * (1 - (t - 0.75) / 0.25);
-  return Math.max(0, alpha * falloff);
-}
+/* Two artworks come out of this file, because the platforms want opposite things:
+ *
+ * - macOS 26 masks the icon itself. Art that does not reach the canvas edge is
+ *   treated as a photograph: the system discards the baked shape, rescales the
+ *   content and puts its own background behind it, which is how you end up with a
+ *   tile inside a tile. So macOS gets the art edge to edge, and the silhouette it
+ *   is cut to is not ours to draw.
+ * - Windows and Linux draw the file as it is, so they get the shaped variant. */
+function appIcon(size, options) {
+  const bleed = Boolean(options && options.bleed);
+  const inset = 0.0977; // Apple's grid: an 824 body inside a 1024 canvas
+  /* Fitted to the mask macOS 26 renders here, measured against one of Apple's own
+   * icons (Chess): the corner profile matches a superellipse at exponent 4.3 to
+   * 1.1px over 1024. Exponent 5 — the usual rule of thumb — is measurably squarer
+   * than what the system actually ships. */
+  const exponent = 4.3;
+  /* The ball fills a good share of the tile so it still reads as a sphere at 32
+   * px, and its aura stops right at the body's edge — a glow cut off by the tile
+   * would show as a hard line. */
+  const sphere = 0.3; // sphere radius in canvas units
+  const auraMax = (0.5 - inset) / sphere;
 
-function over(dst, src, alpha) {
-  dst[0] = src[0] * alpha + dst[0] * (1 - alpha);
-  dst[1] = src[1] * alpha + dst[1] * (1 - alpha);
-  dst[2] = src[2] * alpha + dst[2] * (1 - alpha);
-  return dst;
-}
+  /* The tile: a lit surface, so the sphere has something to sit on. */
+  function tileAt(u, v) {
+    const base = tileGradient(v);
+    const edge = shapeDistance(u, v, inset, exponent);
+    /* An inner highlight along the top edge and a darker bottom, the way a
+     * material catches light from above. The highlight follows the body the
+     * system masks to, not the canvas, so it lands on the icon's own edge — and
+     * it is left out of the full-bleed art, where the system draws its own edge
+     * light and a second one reads as a frame inside the icon. */
+    const topLight = Math.max(0, 1 - Math.abs(v - 0.16) / 0.16) * 0.06;
+    const bottomShade = Math.max(0, (v - 0.62) / 0.38) * 0.1;
+    const gloss = bleed ? 0 : Math.pow(Math.max(0, 1 - Math.abs(edge - 0.94) / 0.06), 2) * 0.05;
+    return base.map((c, i) => Math.min(255, Math.max(0, c + 255 * (topLight + gloss - bottomShade) * (i === 2 ? 1.05 : 1))));
+  }
 
-/* The orb from src/renderer/orb.js, on the app's dark stage: the same base
- * sphere, four drifting colour clouds, top-left specular, bottom shade, rim and
- * the aura it throws around itself. */
-function appIcon(size) {
-  const sphere = 0.26; // sphere radius in canvas units
-  const auraMax = 1.65;
-
-  const orbAt = (u, v) => {
-    const x = u - 0.5;
-    const y = v - 0.5;
-    const distance = Math.hypot(x, y);
-
-    /* The aura first: everything it covers is lifted by the glow. */
-    const auraRadius = sphere * (1.3 + (auraMax - 1.3) * 0.62);
-    const color = [0, 0, 0];
-    if (distance < auraRadius) {
-      const t = Math.max(0, (distance - sphere * 0.4) / (auraRadius - sphere * 0.4));
-      const alpha = (0.32 + 0.42 * 0.62) * Math.max(0, 1 - t) ** 1.6;
-      over(color, [255, 140, 100], alpha);
-    }
-
-    /* The base sphere: light at the top-left, deep at the bottom-right. */
-    if (distance <= sphere) {
-      const light = Math.max(0, 1 - Math.hypot(x + sphere * 0.3, y + sphere * 0.38) / (sphere * 1.1));
-      const base = [
-        38 + (86 - 38) * light,
-        28 + (62 - 28) * light,
-        44 + (104 - 44) * light
-      ];
-      const inset = Math.max(0, 1 - distance / sphere);
-      color[0] = base[0] * Math.min(1, 0.55 + inset * 0.45);
-      color[1] = base[1] * Math.min(1, 0.55 + inset * 0.45);
-      color[2] = base[2] * Math.min(1, 0.55 + inset * 0.45);
-
-      /* A faint warm haze first, so the glass never reads as a bare dark ball
-       * between the clouds — the same thing the live orb does when the room is
-       * loud enough for all four bands to open. */
-      const haze = Math.max(0, 1 - distance / (sphere * 1.02));
-      if (haze > 0) over(color, [214, 108, 96], 0.34 * haze);
-
-      /* The clouds, one per band, each orbiting its own way. */
-      for (let i = 0; i < CLOUD_GEOMETRY.length; i++) {
-        const cloud = CLOUD_GEOMETRY[i];
-        const cx = cloud.x * sphere;
-        const cy = cloud.y * sphere;
-        const radius = sphere * cloud.size * (0.82 + 0.34 * CLOUD_LEVELS[i]);
-        const alpha = Math.min(1, cloud.alpha * (0.72 + 0.45 * CLOUD_LEVELS[i]) * 1.3);
-        const a = blob(x, y, cx, cy, radius, alpha) * (1 - Math.max(0, (distance - sphere * 0.98) / (sphere * 0.02)));
-        if (a > 0) over(color, CLOUD_COLOURS[i], Math.min(1, a));
-      }
-
-      /* Top-left specular, then the shade at the bottom, then the rim light. */
-      const spec = blob(x, y, -sphere * 0.34, -sphere * 0.46, sphere * 0.62, 0.26);
-      if (spec > 0) over(color, [255, 255, 255], spec);
-      const shade = blob(x, y, sphere * 0.2, sphere * 0.55, sphere * 1.25, 0.18);
-      if (shade > 0) over(color, [10, 8, 20], shade);
-      const rim = Math.max(0, 1 - Math.abs(distance - sphere) / (1.1 / size));
-      if (rim > 0) over(color, [255, 255, 255], rim * 0.22);
-    }
-
-    return color;
-  };
-
-  const tile = squircle(0.075, 5);
   return encodePng(
     size,
     size,
     rasterize(
       size,
       [
-        // the stage: a near-black tile, slightly lighter at the top
-        { shape: tile, colorAt: (u, v) => tileAt(v).concat([1]) },
-        { shape: (u, v) => tile(u, v) && v < 0.5, color: [255, 255, 255, 0.035] },
+        /* The shadow the whole icon casts. Only where nothing will draw it for us:
+         * on macOS the system adds its own, outside the mask. */
         {
-          shape: (u, v) => tile(u, v) && Math.hypot(u - 0.5, v - 0.5) < 0.47,
-          colorAt: (u, v) => [255, 130, 110, 0.15 * Math.max(0, 1 - Math.hypot(u - 0.5, v - 0.5) / 0.47)]
+          shape: (u, v) => !bleed && shapeDistance(u, v, inset, exponent) > 1,
+          colorAt: (u, v) => {
+            const d = shapeDistance(u, v, inset, exponent) - 1;
+            const below = v > 0.5 ? 1 : 0.35;
+            const alpha = Math.exp(-Math.pow(d / 0.045, 1.6)) * 0.5 * below;
+            return [4, 5, 9, Math.min(0.5, alpha)];
+          }
         },
-        // the orb, kept inside the tile
-        { shape: (u, v) => tile(u, v) && (Math.hypot(u - 0.5, v - 0.5) < sphere * 1.65), colorAt: (u, v) => orbAt(u, v).concat([1]) }
+        {
+          shape: (u, v) => bleed || shapeDistance(u, v, inset, exponent) <= 1,
+          colorAt: (u, v) => tileAt(u, v).concat([1])
+        },
+
+        /* The orb. */
+        {
+          shape: (u, v) => (bleed || shapeDistance(u, v, inset, exponent) <= 1) && Math.hypot(u - 0.5, v - 0.5) < sphere * auraMax,
+          colorAt: (u, v) => {
+            const x = u - 0.5;
+            const y = v - 0.5;
+            const distance = Math.hypot(x, y);
+            const out = [0, 0, 0];
+            let alpha = 0;
+
+            /* The glow it throws on the tile, and the contact shadow beneath it. */
+            if (distance >= sphere) {
+              const t = Math.min(1, (distance - sphere) / (sphere * auraMax - sphere));
+              const glow = Math.pow(1 - t, 1.3) * 0.75;
+              out[0] = 255 * 0.62 * glow;
+              out[1] = 255 * 0.34 * glow;
+              out[2] = 255 * 0.26 * glow;
+              alpha = glow;
+              const contact = Math.exp(-Math.pow((distance - sphere) / (sphere * 0.55), 2)) * Math.max(0, y + 0.12) * 1.6;
+              out[0] *= 1 - contact;
+              out[1] *= 1 - contact;
+              out[2] *= 1 - contact;
+              return out.concat([Math.min(1, alpha)]);
+            }
+
+            /* On the sphere: one normal, one light. */
+            const nx = x / sphere;
+            const ny = y / sphere;
+            const nz = Math.sqrt(Math.max(0, 1 - nx * nx - ny * ny));
+            const lambert = Math.max(0, nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]);
+            const diffuse = 0.58 + 0.52 * Math.pow(lambert, 0.85);
+            /* Specular: the light mirrored about the normal, seen from the front. */
+            const dotNL = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2];
+            const rx = 2 * dotNL * nx - LIGHT[0];
+            const ry = 2 * dotNL * ny - LIGHT[1];
+            const rz = 2 * dotNL * nz - LIGHT[2];
+            const specular = Math.pow(Math.max(0, rz), 64) * 1.05;
+            const sheen = Math.pow(Math.max(0, rz), 8) * 0.16;
+            /* A rim where the surface turns away, brighter on the lit side, plus a
+             * little light bouncing back from the tile below it. */
+            const rim = Math.pow(1 - nz, 3) * (0.18 + 0.4 * Math.max(0, dotNL));
+            const bounce = Math.pow(Math.max(0, -ny), 2) * Math.pow(1 - nz, 4) * 0.35;
+
+            /* The interior: glass, so the clouds sit behind a lit surface. */
+            const albedo = cloudAlbedo(nx, ny);
+            const body = albedo.map((c) => c * diffuse);
+            out[0] = body[0] + 255 * (specular + sheen + bounce) * 0.95 + 255 * rim * 0.5;
+            out[1] = body[1] + 255 * (specular + sheen + bounce) * 0.95 + 255 * rim * 0.46;
+            out[2] = body[2] + 255 * (specular + sheen + bounce) + 255 * rim * 0.42;
+            return out.map((c) => Math.min(255, c)).concat([1]);
+          }
+        }
       ],
       4
     )
@@ -316,16 +319,18 @@ function write(dir, name, buffer) {
 }
 
 function main() {
-  // build/icon.png is what electron-builder turns into .icns/.ico.
-  write(path.join(ROOT, 'build'), 'icon.png', appIcon(1024));
-  // assets/icon.png is the Dock icon at runtime and the window icon on Windows.
-  write(path.join(ROOT, 'assets'), 'icon.png', appIcon(1024));
+  const BLEED = { bleed: true };
+  const SHAPED = { bleed: false };
+  /* build/icon.png is what electron-builder turns into the .icns macOS masks. */
+  write(path.join(ROOT, 'build'), 'icon.png', appIcon(1024, BLEED));
+  // assets/icon.png is the Dock icon at runtime, drawn by the same system.
+  write(path.join(ROOT, 'assets'), 'icon.png', appIcon(1024, BLEED));
+  // Windows and Linux take the artwork as it is, so it comes pre-shaped.
+  write(path.join(ROOT, 'build'), 'icon-shape.png', appIcon(1024, SHAPED));
   // Linux asks for a folder of named sizes (hicolor theme).
   [256, 512, 1024].forEach((size) => {
-    write(path.join(ROOT, 'build', 'icons'), `${size}x${size}.png`, appIcon(size));
+    write(path.join(ROOT, 'build', 'icons'), `${size}x${size}.png`, appIcon(size, SHAPED));
   });
 }
 
 main();
-
-module.exports = { encodePng, rasterize, microphone, squircle, appIcon };
