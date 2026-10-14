@@ -12,8 +12,10 @@
     "install:mac": "scripts/install.sh",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
-    "dist": "electron-builder --mac --win",
-    "e2e": "node test/e2e.js"
+    "dist": "electron-builder --mac --win --linux",
+    "e2e": "node test/e2e.js",
+    "dist:linux": "electron-builder --linux",
+    "dist:this": "node scripts/dist-this.js"
   },
   "build": {
     "appId": "com.local.guya",
@@ -42,6 +44,31 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "icon": "build/icons",
+      "synopsis": "Minimal voice-to-text with your own Gemini key",
+      "description": "A minimal voice-to-text utility: one shortcut records, the audio goes to the Gemini API with your own key, and the transcript lands on the clipboard.",
+      "maintainer": "Mahdi Mirshafiee <Mirshafieemahdi001@gmail.com>",
+      "desktopName": "guya.desktop",
+      "syncDesktopName": true
+    },
+    "deb": {
+      "depends": [
+        "libgtk-3-0",
+        "libnotify4",
+        "libnss3",
+        "libxss1",
+        "libxtst6",
+        "xdg-utils",
+        "libatspi2.0-0",
+        "libsecret-1-0"
+      ]
     }
   },
   "devDependencies": {
@@ -50,5 +77,7 @@
   },
   "overrides": {
     "@noble/hashes": "^1.8.0"
-  }
+  },
+  "author": "Mahdi Mirshafiee",
+  "homepage": "https://github.com/MahdiMirshafiee/guya"
 }

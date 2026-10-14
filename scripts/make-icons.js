@@ -320,6 +320,10 @@ function main() {
   write(path.join(ROOT, 'build'), 'icon.png', appIcon(1024));
   // assets/icon.png is the Dock icon at runtime and the window icon on Windows.
   write(path.join(ROOT, 'assets'), 'icon.png', appIcon(1024));
+  // Linux asks for a folder of named sizes (hicolor theme).
+  [256, 512, 1024].forEach((size) => {
+    write(path.join(ROOT, 'build', 'icons'), `${size}x${size}.png`, appIcon(size));
+  });
 }
 
 main();
