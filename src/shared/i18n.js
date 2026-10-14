@@ -112,7 +112,7 @@
     'error.micBusy': { fa: 'میکروفون در اختیار برنامه دیگری است.', en: 'Another app is using the microphone.' },
 
     /* ---- panel UI ---- */
-    'ui.title': { fa: 'دیکته', en: 'Dictate' },
+    'ui.title': { fa: 'گویا', en: 'Guya' },
     'ui.engineName': { fa: 'Gemini', en: 'Gemini' },
     'ui.apiKeyExample': { fa: 'AIza…', en: 'AIza…' },
     'ui.settings': { fa: 'تنظیمات', en: 'Settings' },
