@@ -81,9 +81,10 @@ npm start
 نسخه‌ی ساخته‌شده در `/Applications/Guya.app` نصب شده است. برای ساخت و نصب دوباره:
 
 ```bash
-npm run dist:mac
-cp -R dist/mac-arm64/Guya.app /Applications/
+npm run install:mac
 ```
+
+این کار می‌سازد، در `/Applications/Guya.app` جای‌گذاری می‌کند و اپ را به Launch Services معرفی می‌کند — بدون این ثبت، اپی که یک‌بار از پوشه‌ی `dist` باز شده باشد ممکن است در Launchpad دیده نشود.
 
 اپ بدون امضای دیجیتال ساخته می‌شود (چون روی همین دستگاه ساخته شده، Gatekeeper مانع اجرایش نمی‌شود). آیکون باندل از `build/icon.png` ساخته می‌شود.
 

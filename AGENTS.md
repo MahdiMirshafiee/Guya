@@ -54,6 +54,7 @@ preference.
 | End-to-end (launches the app with a fake microphone) | `npm run e2e` |
 | Regenerate the icon | `npm run icons` |
 | Package for this machine | `npm run dist:mac` / `npm run dist:win` |
+| Build, install and register on this machine | `npm run install:mac` |
 | Cut a release | `scripts/release.sh 1.1.0` |
 
 ## Definition of done
@@ -69,8 +70,11 @@ Before calling a change finished:
    one direction is half-tested.
 4. If behaviour changed: `DESIGN.md` says so, including the decision and the
    alternative you rejected.
-5. If the interface changed on this machine: rebuild and reinstall —
-   `npm run dist:mac && cp -R dist/mac-arm64/Guya.app /Applications/` — and say so.
+5. If the interface changed on this machine: run `scripts/install.sh` and say so.
+   It builds, replaces `/Applications/Guya.app`, tells Launch Services about the
+   new copy and removes the build output. Copying a bundle by hand is not enough:
+   Launch Services remembers paths, and an app opened once from `dist/` leaves an
+   entry behind that hides the installed copy from Launchpad.
    The installed app is what the user actually runs.
 
 ## Commits
