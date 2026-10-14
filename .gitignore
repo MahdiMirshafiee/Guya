@@ -1,0 +1,8 @@
+# dependencies and build output — everything here is regenerated
+node_modules/
+dist/
+release/
+build/*.icns
+*.blockmap
+*.log
+.DS_Store

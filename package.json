@@ -1,0 +1,53 @@
+{
+  "name": "guya",
+  "productName": "Guya",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Minimal local voice-to-text utility (Gemini) for macOS and Windows",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/run.js",
+    "icons": "node scripts/make-icons.js",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist": "electron-builder --mac --win",
+    "e2e": "node test/e2e.js"
+  },
+  "build": {
+    "appId": "com.local.guya",
+    "productName": "Guya",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Guya needs the microphone to record your voice for transcription."
+      }
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.7.1",
+    "electron-builder": "^26.15.3"
+  },
+  "overrides": {
+    "@noble/hashes": "^1.8.0"
+  }
+}
