@@ -199,7 +199,16 @@ class Cdp {
   check('timer starts at 0:00', (await el('timer')) === '0:00', await el('timer'));
   check('waveform sits at its baseline', Math.max.apply(null, await waveBars()) <= 8);
   check('no transcript actions yet', await panel.eval(`document.getElementById('copyTranscript').hidden`));
-  check('the microphone is closed at rest', await overlay.eval('audioCtx === null'));
+
+  /* The graph is built at boot, so a start has nothing to wait for but the device
+   * itself. What must never happen at rest is a live microphone. */
+  const rest = await overlay.eval(`({
+    graphReady: !!audioCtx && audioCtx.state === 'running' && !!captureNode,
+    stream: stream === null,
+    source: sourceNode === null
+  })`);
+  check('the microphone is closed at rest', rest.stream && rest.source, JSON.stringify(rest));
+  check('and the audio graph is already built, so a start is immediate', rest.graphReady);
   check('nothing of the floating orb is on screen', (await overlay.eval(`document.getElementById('stage').dataset.state`)) === 'idle');
   const gear = await panel.eval(`document.getElementById('openSettings').getBoundingClientRect().left`);
   check('the settings control sits clear of the window buttons', gear > 380, Math.round(gear));
@@ -240,6 +249,19 @@ class Cdp {
     return Math.max.apply(null, bars) > 20 ? Math.max.apply(null, bars) : 0;
   }, 6000, 'the meter');
   check('meter is fed by the microphone', peak > 20, peak);
+
+  /* A meter made of one loudness number would light every bar by the same amount.
+   * Chromium's fake device plays a steady tone, so a real spectrum has to put the
+   * energy in the bands around that tone and leave the far ones alone. */
+  const profile = await waitFor(async () => {
+    const bars = await waveBars();
+    const third = Math.floor(bars.length / 3);
+    const low = Math.max.apply(null, bars.slice(0, third));
+    const high = Math.max.apply(null, bars.slice(2 * third));
+    return low > 20 ? { low, high } : null;
+  }, 6000, 'a spectrum');
+  check('the bars are frequency bands, not one loudness number', profile.low > profile.high * 2,
+    JSON.stringify(profile));
   check('the button is stained while live', await panel.eval(`(() => {
     const s = getComputedStyle(document.getElementById('record'));
     const m = s.backgroundColor.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
@@ -254,12 +276,18 @@ class Cdp {
 
   console.log('\n4. stopping and transcribing');
   await panel.eval(`document.getElementById('record').click()`);
+  /* Both read in the same round trip and at the first moment the phase is seen:
+   * the transcription is short when the provider is unreachable, and a check that
+   * samples the loader afterwards is a check that races it. */
   const working = await waitFor(async () => {
-    const p = await phase();
-    return p === 'transcribing' ? p : null;
+    const snapshot = await panel.eval(`({
+      phase: appState.phase,
+      loader: !document.getElementById('loader').hidden && loader.isRunning()
+    })`);
+    return snapshot.phase === 'transcribing' ? snapshot : null;
   }, 6000, 'the working phase');
-  check('it moves to work immediately', working === 'transcribing', working);
-  check('the orb becomes the loader', !(await panel.eval(`document.getElementById('loader').hidden`)) && (await panel.eval('loader.isRunning()')));
+  check('it moves to work immediately', working.phase === 'transcribing', working.phase);
+  check('the orb becomes the loader', working.loader === true, JSON.stringify(working));
   const settled = await waitFor(async () => {
     const p = await phase();
     return ['done', 'error'].indexOf(p) !== -1 ? p : null;
