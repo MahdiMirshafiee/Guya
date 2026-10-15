@@ -28,6 +28,7 @@ const DEFAULTS = {
    * promptRevision here on purpose: a revision the store cannot read as old would
    * mean an install that keeps its vocabulary text and loses the rules. */
   prompt: DEFAULT_PROMPT,
+  promptSeeded: DEFAULT_PROMPT,
   uiLanguage: 'fa',
   shortcut: DEFAULT_SHORTCUT,
   silenceStopMs: SILENCE_STOP_MS,

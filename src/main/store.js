@@ -26,6 +26,7 @@ function sanitize(raw, fallback) {
   if (typeof raw.model === 'string' && raw.model.trim()) out.model = raw.model.trim().slice(0, 120);
   if (typeof raw.language === 'string' && LANGUAGE_CODES.indexOf(raw.language) !== -1) out.language = raw.language;
   if (typeof raw.prompt === 'string') out.prompt = raw.prompt.slice(0, 4000);
+  if (typeof raw.promptSeeded === 'string') out.promptSeeded = raw.promptSeeded.slice(0, 4000);
   if (typeof raw.promptRevision === 'number') out.promptRevision = raw.promptRevision;
   if (raw.uiLanguage === 'fa' || raw.uiLanguage === 'en') out.uiLanguage = raw.uiLanguage;
   if (typeof raw.shortcut === 'string' && /^[A-Za-z0-9+]+$/.test(raw.shortcut)) out.shortcut = raw.shortcut;
@@ -53,15 +54,34 @@ function migrateLegacy() {
  * vocabulary, appended to the user turn, while the instructions lived in code; it
  * is now the instructions themselves. A file with no revision predates that, so it
  * gets the default text with whatever the user had written kept underneath — it was
- * never the app's to drop — and a file carrying the revision is left alone, empty or
- * not, because the field is theirs from then on. */
+ * never the app's to drop — and a file carrying the revision is left alone, because
+ * the field is theirs from then on.
+ *
+ * `promptSeeded` records the text the app itself put there. It answers the one
+ * question that cannot be answered by looking at the text: has the user edited
+ * this? A field still holding what we wrote follows a better default; a field with
+ * anything else in it is left exactly as it is, empty included. */
 function seedPrompt() {
-  if (cache.promptRevision >= PROMPT_REVISION) return;
   const text = cache.prompt.trim();
-  const bundled = Object.keys(LEGACY_PROMPTS).map((k) => LEGACY_PROMPTS[k]);
-  const mine = text && text !== DEFAULT_PROMPT && bundled.indexOf(text) === -1 ? text : '';
-  cache.prompt = (mine ? `${DEFAULT_PROMPT}\n\n${mine}` : DEFAULT_PROMPT).slice(0, 4000);
-  cache.promptRevision = PROMPT_REVISION;
+  const ours = typeof cache.promptSeeded === 'string' && cache.promptSeeded === cache.prompt;
+
+  /* Written as "is it current?" rather than "is it older?": a file with no
+   * revision at all is the one that most needs this, and `undefined < 2` is false. */
+  if (!(cache.promptRevision >= PROMPT_REVISION)) {
+    const bundled = Object.keys(LEGACY_PROMPTS).map((k) => LEGACY_PROMPTS[k]);
+    const mine = text && text !== DEFAULT_PROMPT && !ours && bundled.indexOf(text) === -1 ? text : '';
+    cache.prompt = (mine ? `${DEFAULT_PROMPT}\n\n${mine}` : DEFAULT_PROMPT).slice(0, 4000);
+    cache.promptRevision = PROMPT_REVISION;
+    cache.promptSeeded = DEFAULT_PROMPT;
+    return;
+  }
+
+  /* The wording of the default improves over releases. A field nobody has touched
+   * should get the better text: that is the whole reason the marker is kept. */
+  if (cache.prompt === DEFAULT_PROMPT || ours) {
+    cache.prompt = DEFAULT_PROMPT;
+    cache.promptSeeded = DEFAULT_PROMPT;
+  }
 }
 
 function read() {
