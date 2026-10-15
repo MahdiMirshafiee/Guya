@@ -78,8 +78,9 @@ preference.
 Before calling a change finished:
 
 1. `npm test` passes, and `node scripts/check-structure.js` reports no cycles,
-   no destructured import that names something a module does not export, and no
-   module importing Electron from `src/shared/`.
+   no destructured import that names something a module does not export, no call
+   to a name a module never defines, and no module importing Electron from
+   `src/shared/`.
 2. `npm run e2e` passes when anything the user sees changed. It is the only check
    that reads what is actually on screen.
 3. If the interface changed: look at it. Start with
