@@ -45,6 +45,7 @@
     'error.micDenied': { fa: 'دسترسی میکروفون برای Guya بسته است.', en: 'Microphone access for Guya is turned off.' },
     'error.micFailed': { fa: 'راه‌اندازی میکروفون ناموفق بود.', en: 'The microphone could not be started.' },
     'error.tooShort': { fa: 'صدا خیلی کوتاه بود، دوباره تلاش کنید.', en: 'That was too short, try again.' },
+    'error.noSpeech': { fa: 'در این ضبط گفتاری شنیده نشد.', en: 'No speech in that recording.' },
     'error.unexpected': { fa: 'خطای غیرمنتظره', en: 'Unexpected error' },
     'error.noModel': { fa: 'مدلی انتخاب نشده است.', en: 'No model selected.' },
     'error.timeout': { fa: 'زمان درخواست به پایان رسید.', en: 'The request timed out.' },

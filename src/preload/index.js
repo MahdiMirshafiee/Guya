@@ -18,10 +18,10 @@ contextBridge.exposeInMainWorld('guya', {
   accessibilityStatus: () => ipcRenderer.invoke('permissions:accessibility'),
   pasteSupport: () => ipcRenderer.invoke('permissions:paste'),
   requestAccessibility: () => ipcRenderer.invoke('permissions:request-accessibility'),
-  onLevel: (handler) => {
-    const listener = (_event, level) => handler(level);
-    ipcRenderer.on('panel:level', listener);
-    return () => ipcRenderer.removeListener('panel:level', listener);
+  onSpectrum: (handler) => {
+    const listener = (_event, levels) => handler(levels);
+    ipcRenderer.on('panel:spectrum', listener);
+    return () => ipcRenderer.removeListener('panel:spectrum', listener);
   },
   onPanelState: (handler) => {
     const listener = (_event, payload) => handler(payload);
@@ -37,7 +37,7 @@ contextBridge.exposeInMainWorld('guya', {
   },
   overlayReady: () => ipcRenderer.invoke('audio:ready'),
   overlayFailed: (message) => ipcRenderer.invoke('audio:error', message),
-  overlayResult: (wav, durationMs) => ipcRenderer.invoke('audio:result', { wav, durationMs }),
+  overlayResult: (wav, durationMs, voiceMs) => ipcRenderer.invoke('audio:result', { wav, durationMs, voiceMs }),
   overlayAutoStopped: () => ipcRenderer.invoke('audio:auto-stop'),
-  sendLevel: (level) => ipcRenderer.send('audio:level', level)
+  sendSpectrum: (levels) => ipcRenderer.send('audio:spectrum', levels)
 });

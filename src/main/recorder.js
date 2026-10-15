@@ -14,6 +14,10 @@ const { state, setPhase, publicState, pushPanel } = require('./state');
 const { MAX_RECORDING_MS } = require('../shared/defaults');
 
 const MIN_AUDIO_SECONDS = 0.35;
+/* How much of the recording has to have been above the room's noise floor before
+ * it is worth asking a model about. Half a second of speech is a word or two —
+ * "okay stop" — and anything under it is a breath, a click or the room itself. */
+const MIN_VOICE_MS = 500;
 
 let startTimer = null; // the microphone never confirmed
 let maxTimer = null; // a recording that ran too long
@@ -97,13 +101,15 @@ function beginRecording() {
   /* The window shows the meter itself, so the floating orb is only for when the
    * user is dictating into some other app. */
   state.overlayShown = !windows.panelHasFocus();
+
+  /* Start comes before the window: opening the microphone is the slow part, and
+   * nothing should wait behind it. */
+  windows.sendToOverlay({ type: 'start', silenceStopMs: store.read().silenceStopMs });
   if (state.overlayShown) windows.showOverlay();
   if (process.env.GUYA_DEBUG) {
     console.log(`[guya] overlay ${state.overlayShown ? 'shown' : 'suppressed'} (window in front: ${!state.overlayShown})`);
   }
   gemini.warm();
-
-  windows.sendToOverlay({ type: 'start', silenceStopMs: store.read().silenceStopMs });
 
   // If the renderer never confirms, do not leave the app stuck in "starting".
   startTimer = setTimeout(() => {
@@ -134,12 +140,20 @@ function onHotkey() {
   });
 }
 
-async function handleAudioResult(wav, durationMs) {
+async function handleAudioResult(wav, durationMs, voiceMs) {
   if (state.phase !== 'transcribing') return { ok: false };
 
   const settings = store.read();
   const seconds = durationMs > 0 ? durationMs / 1000 : 0;
   if (seconds < MIN_AUDIO_SECONDS) return fail('error.tooShort');
+
+  /* A recording of a quiet room is not a question, and a model asked to transcribe
+   * one will answer with something plausible instead — a greeting, a thank-you, a
+   * sentence nobody said. So it never gets asked: the overlay measures how much of
+   * the recording was above the room's own noise floor, and below this there is
+   * nothing to transcribe. Silence is a result, not a failure to hide. */
+  const spoken = Number.isFinite(voiceMs) ? voiceMs : durationMs;
+  if (spoken < MIN_VOICE_MS) return fail('error.noSpeech');
 
   const result = await gemini.transcribe({
     apiKey: settings.apiKey,

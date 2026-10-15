@@ -105,11 +105,18 @@ function register() {
 
   /* ---- the overlay ---- */
 
-  /* The overlay owns the microphone, so the panel's meter is fed from there. */
-  ipcMain.on('audio:level', (_event, level) => {
-    if (typeof level !== 'number' || !Number.isFinite(level)) return;
-    const clamped = Math.min(1, Math.max(0, level));
-    windows.sendToPanel('panel:level', clamped);
+  /* The overlay owns the microphone, so the panel's meter is fed from there: one
+   * value per frequency band, in band order. */
+  ipcMain.on('audio:spectrum', (_event, levels) => {
+    if (!Array.isArray(levels)) return;
+    const clean = [];
+    for (let i = 0; i < levels.length; i++) {
+      const value = levels[i];
+      if (typeof value !== 'number' || !Number.isFinite(value)) return;
+      clean.push(Math.min(1, Math.max(0, value)));
+    }
+    if (!clean.length) return;
+    windows.sendToPanel('panel:spectrum', clean);
   });
 
   ipcMain.handle('audio:ready', () => recorder.confirmStarted());
@@ -119,8 +126,9 @@ function register() {
   ipcMain.handle('audio:result', (_event, payload) => {
     const wav = Buffer.from(payload && payload.wav ? payload.wav : []);
     const durationMs = payload && payload.durationMs ? payload.durationMs : 0;
+    const voiceMs = payload && Number.isFinite(payload.voiceMs) ? payload.voiceMs : durationMs;
     // Never let a slow API call block the renderer's invoke channel for long.
-    recorder.handleAudioResult(wav, durationMs).catch(() => recorder.fail('error.unexpected'));
+    recorder.handleAudioResult(wav, durationMs, voiceMs).catch(() => recorder.fail('error.unexpected'));
     return { ok: true };
   });
 }

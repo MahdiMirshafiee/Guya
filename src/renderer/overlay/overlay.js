@@ -20,8 +20,12 @@ const BOX = 96; // canvas box in CSS pixels
 const ORB_R = 27; // sphere radius
 const DEFAULT_SILENCE_STOP_MS = 10000;
 
-/* Frequency bands (Hz) mapped onto the four clouds. */
-const BANDS = [
+/* The meter's resolution, and the two consumers of the same measurement: the
+ * panel draws all of these bars, and the orb's four colours each take one range
+ * of them. Both come from one spectrum, so the floating orb and the window can
+ * never disagree about what the microphone is hearing. */
+const SPECTRUM_BANDS = 48;
+const CLOUD_HZ = [
   [90, 260],
   [260, 800],
   [800, 2400],
@@ -36,7 +40,8 @@ let sourceNode = null;
 let captureNode = null;
 let sinkNode = null;
 let analyser = null;
-let spectrum = null;
+let spectrumBins = null;
+let graphReady = null;
 let chunks = [];
 let captureRate = 0;
 let capturing = false;
@@ -45,6 +50,7 @@ let bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
 let levelTickAt = 0;
 let silenceStopMs = DEFAULT_SILENCE_STOP_MS;
 let lastVoiceAt = 0;
+let voiceMs = 0;
 
 /* Rolling noise floor, so the silence detector adapts to the room instead of
  * relying on one hard-coded level. */
@@ -64,7 +70,16 @@ const orb = GuyaOrb.create(canvas, {
   sphere: ORB_R,
   palette: 'live',
   onFrame: () => {
-    if (stage.dataset.state === 'listening') readSpectrum();
+    if (stage.dataset.state === 'listening') {
+      const levels = readSpectrum();
+      /* Twenty times a second is enough for the eye and keeps the channel quiet;
+       * the orb itself is redrawn every frame from the same numbers. */
+      const at = performance.now();
+      if (levels && at - levelTickAt > 50) {
+        levelTickAt = at;
+        api.sendSpectrum(levels);
+      }
+    }
     orb.setLevels(bands);
   }
 });
@@ -72,24 +87,17 @@ const orb = GuyaOrb.create(canvas, {
 /* ------------------------------------------------------------ level loop -- */
 
 function readSpectrum() {
-  if (!analyser || !spectrum) return;
-  analyser.getByteFrequencyData(spectrum);
-  const perBin = (captureRate || 48000) / 2 / spectrum.length;
-
-  for (let i = 0; i < BANDS.length; i++) {
-    const from = Math.max(0, Math.floor(BANDS[i][0] / perBin));
-    const to = Math.min(spectrum.length - 1, Math.ceil(BANDS[i][1] / perBin));
-    let sum = 0;
-    let count = 0;
-    for (let bin = from; bin <= to; bin++) {
-      sum += spectrum[bin];
-      count++;
-    }
-    const average = count ? sum / count / 255 : 0;
-    const target = Math.min(1, Math.max(GuyaOrb.REST, Math.pow(average, 0.62) * 1.25));
+  if (!analyser || !spectrumBins) return;
+  const rate = captureRate || 48000;
+  analyser.getByteFrequencyData(spectrumBins);
+  const levels = GuyaAudio.spectrum(spectrumBins, rate, SPECTRUM_BANDS);
+  const clouds = GuyaAudio.foldBands(levels, rate, CLOUD_HZ);
+  for (let i = 0; i < bands.length; i++) {
+    const target = Math.max(GuyaOrb.REST, clouds[i]);
     const previous = bands[i];
     bands[i] = target > previous ? previous + (target - previous) * 0.55 : previous + (target - previous) * 0.14;
   }
+  return levels;
 }
 
 function setState(name, text) {
@@ -109,46 +117,27 @@ function setState(name, text) {
 
 /* ------------------------------------------------------------- capture ----- */
 
-async function createCaptureNode(context) {
-  const onChunk = (chunk) => {
-    const rms = GuyaAudio.rms(chunk);
-    noiseFloor.update(rms);
+/* Every chunk of sound the microphone produces, whether or not a recording is
+ * running: the level meter, the silence detector and the voice clock all read the
+ * same samples, and the samples themselves are kept only while capturing. */
+function onChunk(chunk) {
+  const rms = GuyaAudio.rms(chunk);
+  noiseFloor.update(rms);
+  const speaking = rms > noiseFloor.gate();
 
-    /* One level value per 50 ms to the panel, so its meter is fed by the same
-     * measurement the orb uses. */
-    if (capturing) {
-      const at = performance.now();
-      if (at - levelTickAt > 50) {
-        levelTickAt = at;
-        const shaped = Math.min(1, Math.pow(rms * 8, 0.6));
-        api.sendLevel(shaped);
-      }
-    }
-
-    if (!capturing) return;
-    chunks.push(chunk);
-    if (rms > noiseFloor.gate()) lastVoiceAt = performance.now();
-    else if (silenceStopMs > 0 && performance.now() - lastVoiceAt > silenceStopMs) {
+  if (capturing) {
+    /* How much of this recording was actually someone talking: the main process
+     * needs it to decide whether there is anything to transcribe at all. */
+    if (speaking) {
+      voiceMs += (chunk.length / (captureRate || 48000)) * 1000;
+      lastVoiceAt = performance.now();
+    } else if (silenceStopMs > 0 && performance.now() - lastVoiceAt > silenceStopMs) {
       // Tell the main process first, so it is ready to transcribe the result.
       api.overlayAutoStopped();
       stopCapture();
     }
-  };
-
-  if (context.audioWorklet) {
-    try {
-      await context.audioWorklet.addModule('/renderer/overlay/capture-worklet.js');
-      const worklet = new AudioWorkletNode(context, 'guya-capture');
-      worklet.port.onmessage = (event) => onChunk(event.data);
-      return worklet;
-    } catch (err) {
-      console.warn('[guya] AudioWorklet unavailable, falling back to ScriptProcessor:', err && err.message);
-    }
+    if (capturing) chunks.push(chunk);
   }
-
-  const processor = context.createScriptProcessor(2048, 1, 1);
-  processor.onaudioprocess = (event) => onChunk(new Float32Array(event.inputBuffer.getChannelData(0)));
-  return processor;
 }
 
 function micErrorKey(err) {
@@ -159,71 +148,35 @@ function micErrorKey(err) {
   return 'error.micFailed';
 }
 
-function teardown() {
-  try {
-    if (sourceNode) sourceNode.disconnect();
-    if (analyser) analyser.disconnect();
-    if (captureNode) {
-      if (captureNode.port) captureNode.port.onmessage = null;
-      if (captureNode.onaudioprocess !== undefined) captureNode.onaudioprocess = null;
-      captureNode.disconnect();
-    }
-    if (sinkNode) sinkNode.disconnect();
-  } catch (_) {
-    /* nodes may already be gone */
-  }
-  if (stream) stream.getTracks().forEach((track) => track.stop());
-  if (audioCtx) audioCtx.close().catch(() => {});
-  stream = null;
-  audioCtx = null;
-  sourceNode = null;
-  captureNode = null;
-  sinkNode = null;
-  analyser = null;
-  spectrum = null;
-}
-
-async function reportFailure(err) {
-  capturing = false;
-  pendingStop = false;
-  teardown();
-  bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
-  setState('error', '');
-  // The main process localizes the message and sends it back as a flash.
-  await api.overlayFailed(err && err.name ? micErrorKey(err) : typeof err === 'string' ? err : 'error.micFailed');
-}
-
-/* Opens the microphone and builds the capture graph. Returns false on failure
- * (after reporting it), so callers can bail out. */
 async function openMic() {
+  /* Everything that does not need the device is built at boot, so the only thing
+   * between the user's keypress and a live microphone is the device itself. */
+  const prepared = prepareGraph();
+
+  let opened;
   try {
-    // echoCancellation off: nothing is being played back, and the filter can
-    // chew on quiet speech. Everything else stays at the platform default.
-    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, channelCount: 1 } });
+    // The raw signal: noise suppression and automatic gain both chew on quiet
+    // speech, and this audio is going to a model, not to a phone call.
+    opened = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false
+      }
+    });
   } catch (err) {
     reportFailure(err);
     return false;
   }
+  stream = opened;
 
   try {
-    audioCtx = new AudioContext();
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    await prepared;
     sourceNode = audioCtx.createMediaStreamSource(stream);
-    captureNode = await createCaptureNode(audioCtx);
-    // A muted sink keeps the graph pulling without making any sound.
-    sinkNode = audioCtx.createGain();
-    sinkNode.gain.value = 0;
     sourceNode.connect(captureNode);
-    captureNode.connect(sinkNode);
-    sinkNode.connect(audioCtx.destination);
-
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.65;
-    spectrum = new Uint8Array(analyser.frequencyBinCount);
     sourceNode.connect(analyser);
-    analyser.connect(sinkNode);
-
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
     captureRate = audioCtx.sampleRate;
   } catch (err) {
     reportFailure(err);
@@ -232,11 +185,80 @@ async function openMic() {
   return true;
 }
 
+/* The context, the worklet and the analyser, once, as early as possible: building
+ * them while the user is still deciding to dictate is what makes the start
+ * immediate, and none of it touches the microphone. */
+function prepareGraph() {
+  if (graphReady) return graphReady;
+
+  graphReady = (async () => {
+    audioCtx = new AudioContext({ sampleRate: GuyaAudio.TARGET_RATE });
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
+    captureRate = audioCtx.sampleRate;
+
+    if (audioCtx.audioWorklet) {
+      try {
+        await audioCtx.audioWorklet.addModule('/renderer/overlay/capture-worklet.js');
+        captureNode = new AudioWorkletNode(audioCtx, 'guya-capture');
+        captureNode.port.onmessage = (event) => onChunk(event.data);
+      } catch (err) {
+        console.warn('[guya] AudioWorklet unavailable, falling back to ScriptProcessor:', err && err.message);
+        captureNode = null;
+      }
+    }
+    if (!captureNode) {
+      captureNode = audioCtx.createScriptProcessor(2048, 1, 1);
+      captureNode.onaudioprocess = (event) => onChunk(new Float32Array(event.inputBuffer.getChannelData(0)));
+    }
+
+    /* A muted sink keeps the graph pulling without making any sound. */
+    sinkNode = audioCtx.createGain();
+    sinkNode.gain.value = 0;
+    captureNode.connect(sinkNode);
+    sinkNode.connect(audioCtx.destination);
+
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyser.smoothingTimeConstant = 0.65;
+    spectrumBins = new Uint8Array(analyser.frequencyBinCount);
+    analyser.connect(sinkNode);
+  })().catch((err) => {
+    console.warn('[guya] could not prepare the audio graph:', err && err.message);
+    graphReady = null;
+  });
+
+  return graphReady;
+}
+
+/* Closes the microphone and leaves the graph ready for the next time. */
+function releaseMic() {
+  try {
+    if (sourceNode) sourceNode.disconnect();
+    if (stream) stream.getTracks().forEach((track) => track.stop());
+  } catch (_) {
+    /* the stream may already be gone */
+  }
+  sourceNode = null;
+  stream = null;
+  if (spectrumBins) spectrumBins.fill(0);
+}
+
+async function reportFailure(err) {
+  capturing = false;
+  pendingStop = false;
+  releaseMic();
+  bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
+  setState('error', '');
+  // The main process localizes the message and sends it back as a flash.
+  await api.overlayFailed(err && err.name ? micErrorKey(err) : typeof err === 'string' ? err : 'error.micFailed');
+}
+
 async function startCapture() {
   if (capturing) return;
   pendingStop = false;
   bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
   chunks = [];
+  voiceMs = 0;
   lastVoiceAt = performance.now();
   setState('starting', '');
 
@@ -264,8 +286,10 @@ async function stopCapture() {
   const rate = captureRate || 48000;
   const samples = GuyaAudio.concatFloat32(chunks);
   const durationMs = Math.round((samples.length / rate) * 1000);
+  const spokenMs = Math.round(voiceMs);
   chunks = [];
-  teardown();
+  voiceMs = 0;
+  releaseMic();
 
   let wav;
   try {
@@ -274,7 +298,9 @@ async function stopCapture() {
     return reportFailure('error.micFailed');
   }
 
-  api.overlayResult(wav, durationMs);
+  /* How much of it was speech travels with the audio: a recording of a quiet room
+   * is not something to ask a model about. */
+  api.overlayResult(wav, durationMs, spokenMs);
 }
 
 /* -------------------------------------------------------------- commands --- */
@@ -295,5 +321,9 @@ api.onOverlayCommand((payload) => {
 });
 
 /* ------------------------------------------------------------------ boot --- */
+
+/* Preparing the audio graph costs a context, a worklet fetch and a compile, none
+ * of which needs the microphone. Doing it now is what makes the start instant. */
+prepareGraph();
 
 window.addEventListener('resize', () => orb.resize());

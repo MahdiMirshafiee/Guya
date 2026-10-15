@@ -30,14 +30,20 @@ const R = {
 
 /* ------------------------------------------------------------ waveform --- */
 
-/* The meter is a drawn shape: 48 capsule bars fed at 20 Hz from the overlay,
- * which is where the microphone actually lives. At rest the bars sit at a
- * visible baseline rather than collapsing to a hairline. */
+/* The meter is a spectrum: 48 capsule bars, each one a frequency band of the live
+ * input, fed at 20 Hz from the overlay, which is where the microphone lives. A
+ * band rises quickly and falls slowly, the way a level meter does, so speech reads
+ * as movement instead of flicker. At rest the bars sit at a visible baseline
+ * rather than collapsing to a hairline. */
 const WAVE_BARS = 48;
 const WAVE_SPACING = 3;
 const WAVE_MIN_HEIGHT = 4;
-let levels = new Array(WAVE_BARS).fill(0);
+const WAVE_ATTACK = 0.6;
+const WAVE_RELEASE = 0.18;
+let bands = new Array(WAVE_BARS).fill(0);
+let bars = new Array(WAVE_BARS).fill(0);
 let waveDpr = 1;
+let waveRaf = 0;
 
 function sizeWaveform() {
   waveDpr = Math.min(2, window.devicePixelRatio || 1);
@@ -46,6 +52,24 @@ function sizeWaveform() {
   R.waveform.width = Math.round(width * waveDpr);
   R.waveform.height = Math.round(height * waveDpr);
   drawWaveform();
+}
+
+/* One animation frame per arrival, not one per band: the bars are drawn together
+ * from the values the microphone just produced. */
+function animateWaveform() {
+  if (waveRaf) return;
+  waveRaf = requestAnimationFrame(() => {
+    waveRaf = 0;
+    let moving = false;
+    for (let i = 0; i < WAVE_BARS; i++) {
+      const target = bands[i] || 0;
+      const previous = bars[i];
+      bars[i] = target > previous ? previous + (target - previous) * WAVE_ATTACK : previous + (target - previous) * WAVE_RELEASE;
+      if (Math.abs(bars[i] - target) > 0.002) moving = true;
+    }
+    drawWaveform();
+    if (moving) animateWaveform();
+  });
 }
 
 function drawWaveform() {
@@ -65,7 +89,7 @@ function drawWaveform() {
   ctx.fillStyle = tint;
 
   for (let i = 0; i < WAVE_BARS; i++) {
-    const height = Math.max(WAVE_MIN_HEIGHT, levels[i] * cssHeight);
+    const height = Math.max(WAVE_MIN_HEIGHT, bars[i] * cssHeight);
     const x = i * (barWidth + WAVE_SPACING);
     const y = (cssHeight - height) / 2;
     ctx.beginPath();
@@ -75,10 +99,14 @@ function drawWaveform() {
   }
 }
 
-function pushLevel(level) {
-  levels.push(level);
-  levels.shift();
-  drawWaveform();
+/* The bands arrive as one array in band order, so a bar can never be fed by the
+ * wrong band: it is drawn from the value the microphone produced for it. */
+function pushSpectrum(levels) {
+  if (!Array.isArray(levels) || !levels.length) return;
+  for (let i = 0; i < WAVE_BARS; i++) {
+    if (i < levels.length) bands[i] = levels[i];
+  }
+  animateWaveform();
 }
 
 /* -------------------------------------------------------------- loader --- */
@@ -297,9 +325,9 @@ window.addEventListener('resize', () => {
   sizeWaveform();
   loader.resize();
 });
-api.onLevel((level) => {
+api.onSpectrum((levels) => {
   if (appState.phase !== 'recording' && appState.phase !== 'starting') return;
-  pushLevel(level);
+  pushSpectrum(levels);
 });
 api.onPanelState(onState);
 
@@ -307,9 +335,12 @@ api.onPanelState(onState);
 setInterval(() => {
   if (appState.phase === 'recording' || appState.phase === 'starting') return;
   let moving = false;
-  for (const level of levels) if (level > 0.001) moving = true;
+  for (const level of bars) if (level > 0.001) moving = true;
   if (!moving) return;
-  for (let i = 0; i < levels.length; i++) levels[i] *= 0.72;
+  for (let i = 0; i < WAVE_BARS; i++) {
+    bands[i] = 0;
+    bars[i] *= 0.72;
+  }
   drawWaveform();
 }, 100);
 

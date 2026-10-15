@@ -123,8 +123,74 @@
     return Math.max(0, (byteLength - 44) / 2 / TARGET_RATE);
   }
 
+  /* ------------------------------------------------------------- spectrum --- */
+
+  /* The meter is a spectrum, not a history of loudness: each bar is one frequency
+   * band, so a voice at 1 kHz moves the bars around 1 kHz and leaves the rest
+   * alone. Bands are spaced logarithmically — an octave takes the same room on
+   * screen as the octave below it — over the range speech occupies.
+   *
+   * `bins` is what AnalyserNode.getByteFrequencyData gives (0-255 per bin) and
+   * `sampleRate` is the context's rate; the result is 0-1 per band, shaped so
+   * quiet speech still shows. */
+  var SPECTRUM_LOW_HZ = 60;
+  var SPECTRUM_HIGH_HZ = 16000;
+
+  function bandEdges(sampleRate, bandCount, lowHz, highHz) {
+    var low = Math.max(1, lowHz || SPECTRUM_LOW_HZ);
+    var high = Math.min(sampleRate / 2, highHz || SPECTRUM_HIGH_HZ);
+    var edges = [];
+    for (var i = 0; i < bandCount; i++) edges.push(low * Math.pow(high / low, i / bandCount));
+    edges.push(high);
+    return edges;
+  }
+
+  function spectrum(bins, sampleRate, bandCount, lowHz, highHz) {
+    var edges = bandEdges(sampleRate, bandCount, lowHz, highHz);
+    var binCount = bins.length;
+    var perBin = sampleRate / 2 / (binCount || 1);
+    var out = new Array(bandCount);
+    for (var b = 0; b < bandCount; b++) {
+      /* Bins are partitioned, not overlapped: a band owns the bins at or after its
+       * lower edge and before its upper one, so a pure tone lights one bar instead
+       * of two. Near the bottom two edges fall inside the same bin, and a band over
+       * an empty range would sit dead forever, so each band keeps at least one. */
+      var from = Math.max(0, Math.min(binCount - 1, Math.ceil(edges[b] / perBin)));
+      var to = Math.max(from, Math.min(binCount - 1, Math.ceil(edges[b + 1] / perBin) - 1));
+      var sum = 0;
+      var count = 0;
+      for (var bin = from; bin <= to; bin++) {
+        sum += bins[bin];
+        count++;
+      }
+      var average = count ? sum / count / 255 : 0;
+      out[b] = Math.min(1, Math.pow(average, 0.62) * 1.25);
+    }
+    return out;
+  }
+
+  /* One band per cloud in the orb: the same measurement, folded into the ranges
+   * the sphere's colours are driven by. The band indices come from the same edges
+   * `spectrum` used, so the two stay aligned whatever the context's rate is —
+   * which matters because the top of the spectrum is the Nyquist frequency, and a
+   * 16 kHz context cannot see 16 kHz. */
+  function foldBands(levels, sampleRate, rangesHz) {
+    var edges = bandEdges(sampleRate, levels.length);
+    return rangesHz.map(function (range) {
+      var from = 0;
+      while (from < levels.length - 1 && edges[from + 1] <= range[0]) from++;
+      var to = from + 1;
+      while (to < levels.length && edges[to] < range[1]) to++;
+      var best = 0;
+      for (var i = from; i < to; i++) if (levels[i] > best) best = levels[i];
+      return best;
+    });
+  }
+
   return {
     TARGET_RATE: TARGET_RATE,
+    SPECTRUM_LOW_HZ: SPECTRUM_LOW_HZ,
+    SPECTRUM_HIGH_HZ: SPECTRUM_HIGH_HZ,
     floatToInt16: floatToInt16,
     concatFloat32: concatFloat32,
     highPass: highPass,
@@ -133,6 +199,9 @@
     encodeWav: encodeWav,
     wavFromFloat32: wavFromFloat32,
     rms: rms,
-    durationSeconds: durationSeconds
+    durationSeconds: durationSeconds,
+    bandEdges: bandEdges,
+    spectrum: spectrum,
+    foldBands: foldBands
   };
 });
