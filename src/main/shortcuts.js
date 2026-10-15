@@ -21,7 +21,7 @@ function registerShortcut(acceleratorString) {
   }
   if (!acceleratorString) return { ok: true };
   try {
-    const registered = globalShortcut.register(acceleratorString, onHotkey);
+    const registered = globalShortcut.register(acceleratorString, recorder.onHotkey);
     if (!registered) return { ok: false, errorKey: 'error.shortcutTaken' };
     return { ok: true };
   } catch (_) {
@@ -39,18 +39,6 @@ function applyShortcut(next) {
   }
   state.shortcutErrorKey = '';
   return { ok: true };
-}
-
-function onHotkey() {
-  if (state.phase === 'transcribing' || state.phase === 'starting') return;
-  if (state.phase === 'recording') stopRecording();
-  // startRecording is async; surface a failure in the UI instead of only in the
-  // console as an unhandled rejection.
-  else
-    Promise.resolve(startRecording()).catch((err) => {
-      console.warn('[guya] start failed:', err && err.stack ? err.stack : err);
-      fail('error.unexpected');
-    });
 }
 
 /* Escape belongs to whatever app the user is in, except while they are dictating
