@@ -27,9 +27,40 @@ const fakeElectron = {
   shell: { openExternal: () => Promise.resolve() }
 };
 
+/* The shortcut path is the one a user meets first, so it is driven here the way
+ * the system drives it: through the callback that was handed to globalShortcut. */
+const shortcutHandlers = new Map();
+fakeElectron.globalShortcut = {
+  register: (accelerator, handler) => {
+    if (shortcutHandlers.has(accelerator)) return false;
+    shortcutHandlers.set(accelerator, handler);
+    return true;
+  },
+  unregister: (accelerator) => shortcutHandlers.delete(accelerator),
+  unregisterAll: () => shortcutHandlers.clear(),
+  isRegistered: (accelerator) => shortcutHandlers.has(accelerator)
+};
+
+/* The recorder drives real windows; here they are only told what happened. */
+const windowCalls = [];
+const fakeWindows = {
+  panelHasFocus: () => false,
+  showOverlay: () => windowCalls.push('showOverlay'),
+  hideOverlay: () => windowCalls.push('hideOverlay'),
+  sendToOverlay: (message) => windowCalls.push('overlay:' + message.type),
+  sendToPanel: (message) => windowCalls.push('panel:' + message.type),
+  showPanel: () => windowCalls.push('showPanel'),
+  togglePanel: () => {},
+  getPanel: () => null,
+  getOverlay: () => null,
+  OVERLAY_WIDTH: 220,
+  OVERLAY_HEIGHT: 112
+};
+
 const originalLoad = Module._load;
 Module._load = function (request, parent, isMain) {
   if (request === 'electron') return fakeElectron;
+  if (request === './windows') return fakeWindows;
   return originalLoad.apply(this, arguments);
 };
 
@@ -655,6 +686,7 @@ test('the field is seeded, once, from whatever an install already had', () => {
   const file = store.path;
   const saved = fs.readFileSync(file, 'utf8');
   const storePath = require.resolve('../src/main/store.js');
+  const cached = require.cache[storePath];
   const reload = (patch) => {
     const next = JSON.parse(saved);
     Object.keys(patch).forEach((key) => {
@@ -685,7 +717,11 @@ test('the field is seeded, once, from whatever an install already had', () => {
   assert.strictEqual(reload({ prompt: 'Say only yes.', promptRevision: GuyaPrompt.PROMPT_REVISION }).prompt, 'Say only yes.');
   assert.strictEqual(reload({ prompt: '', promptRevision: GuyaPrompt.PROMPT_REVISION }).prompt, '', 'a deliberate clear is not undone');
 
+  /* Leave the cache exactly as it was found: a reloaded copy left behind would be a
+   * second store, and the recorder would read the one this file is not writing to. */
   fs.writeFileSync(file, saved);
+  if (cached) require.cache[storePath] = cached;
+  else delete require.cache[storePath];
 });
 
 test('what the field holds is what the model is told', () => {
@@ -712,6 +748,54 @@ test('what the field holds is what the model is told', () => {
   assert.ok(!/[\u0600-\u06FF]/.test(faWindow), 'nothing Persian is sent to the model');
   assert.strictEqual(gemini.buildInstruction({ language: 'auto', prompt: 'x' }),
     'The audio may be in any language: transcribe every part in the language it is spoken in.');
+});
+
+/* A keypress handler is fire-and-forget: it hands the work to an async flow and
+ * returns. A test that wants to see the result waits for it the way the app does. */
+async function settle(predicate, ms) {
+  const until = Date.now() + (ms || 1000);
+  while (Date.now() < until) {
+    if (predicate()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  return predicate();
+}
+
+/* =========================================================== recording ==== */
+
+group('the path a real keypress takes');
+
+test('the shortcut the system is given starts a recording', async () => {
+  const shortcuts = require('../src/main/shortcuts.js');
+  const { state } = require('../src/main/state');
+  const ACCELERATOR = 'CommandOrControl+Shift+Space';
+
+  store.update({ apiKey: '' });
+  const result = shortcuts.registerShortcut(ACCELERATOR);
+  assert.strictEqual(result.ok, true);
+  const handler = shortcutHandlers.get(ACCELERATOR);
+  assert.strictEqual(typeof handler, 'function', 'globalShortcut was handed something to call');
+
+  /* Nothing is configured, so the honest outcome is the error state. What this
+   * catches is a handler that dies before it gets there — a call to a name the
+   * module never defined reads as "Uncaught Exception" in a packaged app, and no
+   * other test in the suite goes through this door. */
+  await handler();
+  assert.ok(await settle(() => state.phase === 'error'), 'the app says what is missing instead of crashing');
+  assert.strictEqual(state.lastErrorKey, 'error.noKey');
+
+  store.update({ apiKey: 'key-123' });
+  await handler();
+  assert.ok(await settle(() => state.phase === 'starting'), 'with a key it starts listening');
+  assert.ok(windowCalls.indexOf('overlay:start') !== -1, 'and the overlay is told to start');
+  assert.strictEqual(state.lastErrorKey, '');
+});
+
+test('Escape is grabbed while recording and never before', () => {
+  const { setPhase } = require('../src/main/state');
+  assert.ok(shortcutHandlers.has('Escape'), 'the microphone is open, so Escape is ours');
+  setPhase('idle');
+  assert.ok(!shortcutHandlers.has('Escape'), 'at rest it belongs to whatever app the user is in');
 });
 
 /* ------------------------------------------------------------- finish ---- */
