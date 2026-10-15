@@ -61,6 +61,10 @@
     'error.blocked': { fa: 'درخواست توسط فیلتر ایمنی رد شد.', en: 'The request was blocked by a safety filter.' },
     'error.filtered': { fa: 'پاسخ توسط فیلتر ایمنی حذف شد.', en: 'The reply was removed by a safety filter.' },
     'error.emptyReply': { fa: 'پاسخی از مدل دریافت نشد.', en: 'The model returned nothing.' },
+    'error.modelUnsupported': {
+      fa: 'این مدل برای رونویسی ساخته نشده است؛ مدل دیگری انتخاب کنید.',
+      en: 'That model cannot do transcription. Choose another one.'
+    },
     'error.truncated': { fa: 'متن ناقص ماند (صدا طولانی بود).', en: 'The transcript was cut off (audio too long).' },
     'error.pasteFailed': { fa: 'جای‌گذاری خودکار انجام نشد.', en: 'Automatic paste failed.' },
     'error.pastePermission': {

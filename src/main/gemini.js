@@ -94,10 +94,17 @@ function warm() {
 async function listModels(apiKey, uiLanguage) {
   if (!apiKey) return { ok: false, errorKey: 'error.noKey' };
   try {
-    const res = await callApi(`${API_ROOT}/models?pageSize=200`, {
+    let res = await callApi(`${API_ROOT}/models?pageSize=200`, {
       method: 'GET',
       headers: { 'x-goog-api-key': apiKey }
     });
+    /* A blip is not a verdict on the key: try once more before saying anything. */
+    if (res.status >= 500) {
+      res = await callApi(`${API_ROOT}/models?pageSize=200`, {
+        method: 'GET',
+        headers: { 'x-goog-api-key': apiKey }
+      });
+    }
     if (!res.ok) {
       const key = errorKeyForStatus(res.status, res.json);
       return { ok: false, errorKey: key, errorVars: statusVars(res.status), error: t(uiLanguage, key, statusVars(res.status)) };
@@ -121,24 +128,41 @@ async function listModels(apiKey, uiLanguage) {
 }
 
 /* One short text prompt; used by the "test key" button. */
+/* Is this key usable, and does this model exist for it?
+ *
+ * Deliberately a read and not a generation: asking a model to generate something
+ * just to see whether the key works makes the answer depend on things that have
+ * nothing to do with the key — the output-token floor of that particular model, a
+ * quota spent on a real request, a candidate that came back empty because the
+ * answer did not fit. All of those read to the user as "your key is wrong" while
+ * the key is fine. The model resource itself answers the two questions that
+ * matter, for free, and it answers them the same way every time. */
 async function testKey(apiKey, model, uiLanguage) {
   if (!apiKey) return { ok: false, errorKey: 'error.noKey', error: t(uiLanguage, 'error.noKey') };
-  try {
-    const res = await callApi(`${API_ROOT}/models/${encodeURIComponent(model)}:generateContent`, {
-      method: 'POST',
-      headers: { 'x-goog-api-key': apiKey, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text: 'Reply with the single word: ok' }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 16 }
-      })
+  if (!model) return { ok: false, errorKey: 'error.noModel', error: t(uiLanguage, 'error.noModel') };
+
+  const attempt = async () =>
+    callApi(`${API_ROOT}/models/${encodeURIComponent(model)}`, {
+      method: 'GET',
+      headers: { 'x-goog-api-key': apiKey }
     });
+
+  try {
+    let res = await attempt();
+    /* One retry, only for a blip: a dropped connection or a server that hiccuped
+     * is not news about the user's key. */
+    if (res.status >= 500) res = await attempt();
+
     if (!res.ok) {
       const key = errorKeyForStatus(res.status, res.json);
       const vars = statusVars(res.status);
       return { ok: false, errorKey: key, errorVars: vars, error: t(uiLanguage, key, vars) };
     }
-    const candidate = res.json && res.json.candidates && res.json.candidates[0];
-    if (!candidate) return { ok: false, errorKey: 'error.emptyReply', error: t(uiLanguage, 'error.emptyReply') };
+
+    const methods = (res.json && res.json.supportedGenerationMethods) || [];
+    if (methods.length && methods.indexOf('generateContent') === -1) {
+      return { ok: false, errorKey: 'error.modelUnsupported', error: t(uiLanguage, 'error.modelUnsupported') };
+    }
     return { ok: true, model };
   } catch (err) {
     const key = err && err.message === 'timeout' ? 'error.timeout' : 'error.offline';
