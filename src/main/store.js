@@ -44,7 +44,10 @@ function sanitize(raw, fallback) {
   if (typeof raw.promptSeeded === 'string') out.promptSeeded = raw.promptSeeded.slice(0, MAX_PROMPT_CHARS);
   if (typeof raw.promptRevision === 'number') out.promptRevision = raw.promptRevision;
   if (raw.uiLanguage === 'fa' || raw.uiLanguage === 'en') out.uiLanguage = raw.uiLanguage;
-  if (typeof raw.shortcut === 'string' && /^[A-Za-z0-9+]+$/.test(raw.shortcut)) out.shortcut = raw.shortcut;
+  /* The accelerator the recorder produces can contain punctuation (`,` `.` `/` `;`
+   * `'` `[` `]` `\` `-` `=` and the backtick); a pattern that rejected them made those
+   * shortcuts work in the form and vanish in the file. */
+  if (typeof raw.shortcut === 'string' && /^[A-Za-z0-9+,\./;'[\]\\\-=`]+$/.test(raw.shortcut)) out.shortcut = raw.shortcut;
   if (raw.silenceStopMs !== undefined) out.silenceStopMs = sanitizeDuration(raw.silenceStopMs, out.silenceStopMs);
   if (raw.noSpeechStopMs !== undefined) out.noSpeechStopMs = sanitizeDuration(raw.noSpeechStopMs, out.noSpeechStopMs);
   if (ATTEMPT_CHOICES.indexOf(raw.attempts) !== -1) out.attempts = raw.attempts;

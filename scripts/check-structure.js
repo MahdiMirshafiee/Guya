@@ -115,11 +115,14 @@ function stripLiterals(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/(^|[^:'"\\])\/\/[^\n]*/g, '$1')
+    /* Regular expressions before templates: a backtick inside a character class is
+     * not the start of a template literal, and reading it as one swallows the rest of
+     * the file. Strings are safe to do after, because a quote is not one of the
+     * characters a regular expression can follow (see the lookbehind below). */
+    .replace(/([=(,:;[!&|?{}]\s*|\breturn\s+)\/(?![*/])(?:[^/\\\n[]|\\.|\[(?:[^\]\\]|\\.)*\])+\/[gimsuy]*/g, '$1//')
     .replace(/`(?:[^`\\]|\\.)*`/g, '``')
     .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
-    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
-    /* A regular expression is told from a division by what comes before it. */
-    .replace(/([=(,:;[!&|?{}]\s*|\breturn\s+)\/(?![*/])(?:[^/\\\n[]|\\.|\[(?:[^\]\\]|\\.)*\])+\/[gimsuy]*/g, '$1//');
+    .replace(/"(?:[^"\\\n]|\\.)*"/g, '""');
 }
 
 /* `{ a, b: c }` and `{ a = 1 }` both bind the names on the left. */

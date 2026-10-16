@@ -303,6 +303,9 @@ async function askForPastePermission() {
 
 async function saveAndRepaint(patch) {
   const response = await saveSettings(patch);
+  /* The saved setting is the truth: a draft that was refused, or that the store
+   * rewrote, must not be shown as if it were in effect. */
+  shortcutDraft = '';
   if (response.pasteBlocked) showPasteNotice(false);
   if (response.warningKey) setFormStatus(response.warningKey, 'warn');
   else if (formStatus.kind === 'warn' && formStatus.key) formStatus = { key: null, vars: null, kind: '' };

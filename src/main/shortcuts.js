@@ -13,32 +13,49 @@ let escapeRegistered = false;
 
 /* ------------------------------------------------------------ shortcuts ---- */
 
-function registerShortcut(acceleratorString) {
+/* The accelerator that is registered with the system right now. Tracked here, never
+ * read back from the settings store: the store already holds the NEW value by the time
+ * this runs, so reading it would unregister the key the user just asked for and leave
+ * the previous one held forever. */
+let active = '';
+
+function restore(previous) {
+  if (!previous) return;
   try {
-    globalShortcut.unregister(store.read().shortcut);
+    if (globalShortcut.register(previous, recorder.onHotkey)) active = previous;
   } catch (_) {
-    /* nothing registered yet */
+    /* nothing more can be done */
   }
-  if (!acceleratorString) return { ok: true };
+}
+
+function registerShortcut(next) {
+  const previous = active;
+  if (previous) {
+    try {
+      globalShortcut.unregister(previous);
+    } catch (_) {
+      /* already gone */
+    }
+    active = '';
+  }
+  if (!next) return { ok: true };
   try {
-    const registered = globalShortcut.register(acceleratorString, recorder.onHotkey);
-    if (!registered) return { ok: false, errorKey: 'error.shortcutTaken' };
+    if (!globalShortcut.register(next, recorder.onHotkey)) {
+      restore(previous);
+      return { ok: false, errorKey: 'error.shortcutTaken' };
+    }
+    active = next;
     return { ok: true };
   } catch (_) {
+    restore(previous);
     return { ok: false, errorKey: 'error.shortcutInvalid' };
   }
 }
 
 function applyShortcut(next) {
-  const previous = store.read().shortcut;
   const result = registerShortcut(next);
-  if (!result.ok) {
-    registerShortcut(previous);
-    state.shortcutErrorKey = result.errorKey;
-    return result;
-  }
-  state.shortcutErrorKey = '';
-  return { ok: true };
+  state.shortcutErrorKey = result.ok ? '' : result.errorKey;
+  return result;
 }
 
 /* Escape belongs to whatever app the user is in, except while this app is doing

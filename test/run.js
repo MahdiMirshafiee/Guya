@@ -363,9 +363,10 @@ test('punctuation and shifted punctuation are captured', () => {
     GuyaAccelerator.fromKeyboardEvent(keyEvent({ key: '/', code: 'Slash', altKey: true })).accelerator,
     'Alt+/'
   );
+  /* Control on a Mac is Control; see the test below for why it is not Super. */
   assert.strictEqual(
     GuyaAccelerator.fromKeyboardEvent(keyEvent({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true })).accelerator,
-    'Super+Up'
+    'Control+Up'
   );
 });
 
@@ -386,6 +387,22 @@ test('reserved combinations are rejected', () => {
   GuyaAccelerator.setPlatform('darwin');
   const quit = GuyaAccelerator.fromKeyboardEvent(keyEvent({ key: 'q', code: 'KeyQ', metaKey: true }));
   assert.strictEqual(quit.errorKey, 'ui.shortcutReserved', 'Command+Q must not be grabbed globally');
+});
+
+test('Control is Control on macOS, and the primary modifier elsewhere', () => {
+  /* Both used to map to Super, which IS Command on a Mac: every Control shortcut
+   * silently meant Command, so the shortcut the user chose was not the one they got. */
+  GuyaAccelerator.setPlatform('darwin');
+  const mac = GuyaAccelerator.fromKeyboardEvent(keyEvent({ key: 'Space', ctrlKey: true, shiftKey: true }));
+  assert.strictEqual(mac.accelerator, 'Control+Shift+Space');
+  const macPrimary = GuyaAccelerator.fromKeyboardEvent(keyEvent({ metaKey: true, shiftKey: true }));
+  assert.strictEqual(macPrimary.accelerator, 'CommandOrControl+Shift+Space');
+
+  /* On Windows Control IS the primary modifier. */
+  GuyaAccelerator.setPlatform('win32');
+  const win = GuyaAccelerator.fromKeyboardEvent(keyEvent({ ctrlKey: true, shiftKey: true }));
+  assert.strictEqual(win.accelerator, 'CommandOrControl+Shift+Space');
+  GuyaAccelerator.setPlatform('darwin');
 });
 
 test('display formats per platform', () => {
@@ -1378,6 +1395,44 @@ test('ending a session quietly leaves the app at rest', async () => {
   recorder.onEscape();
   assert.strictEqual(state.phase, 'transcribing', 'while recording Escape stops and transcribes');
   setPhase('idle');
+});
+
+test('changing the shortcut releases the old one', async () => {
+  const shortcuts = require('../src/main/shortcuts.js');
+  const held = () => Array.from(shortcutHandlers.keys()).filter((key) => key !== 'Escape').sort();
+  shortcutHandlers.clear();
+
+  const first = shortcuts.registerShortcut('CommandOrControl+Shift+Space');
+  assert.strictEqual(first.ok, true);
+  assert.deepStrictEqual(held(), ['CommandOrControl+Shift+Space']);
+
+  /* The store already holds the new value by the time this runs, so reading it back
+   * would unregister the key the user just asked for and leave the old one held. */
+  const second = shortcuts.registerShortcut('Control+Shift+D');
+  assert.strictEqual(second.ok, true);
+  assert.deepStrictEqual(held(), ['Control+Shift+D'], 'only the new one is held');
+
+  /* A combination the system already owns keeps the working one in place. */
+  shortcutHandlers.set('CommandOrControl+Shift+Space', () => {});
+  /* applyShortcut is what the settings form calls: it registers and publishes the
+   * reason, which is the sentence the window shows. */
+  const taken = shortcuts.applyShortcut('CommandOrControl+Shift+Space');
+  assert.strictEqual(taken.ok, false);
+  assert.strictEqual(taken.errorKey, 'error.shortcutTaken');
+  assert.deepStrictEqual(held(), ['CommandOrControl+Shift+Space', 'Control+Shift+D'], 'and the previous one is restored');
+  assert.strictEqual(require('../src/main/state').state.shortcutErrorKey, 'error.shortcutTaken', 'the window can say so');
+
+  shortcutHandlers.clear();
+});
+
+test('the store keeps a shortcut made of punctuation', () => {
+  /* The form could produce Control+Shift+, and the store silently threw it away: the
+   * shortcut the user picked worked until the app was restarted. */
+  ['Control+Shift+,', 'Alt+/', 'Control+;', 'Control+Shift+[', 'Alt+-', 'Control+`'].forEach((accelerator) => {
+    assert.strictEqual(store.update({ shortcut: accelerator }).shortcut, accelerator, accelerator + ' survives');
+  });
+  assert.strictEqual(store.update({ shortcut: 'not a shortcut!' }).shortcut, 'Control+`', 'and nonsense does not');
+  store.update({ shortcut: 'CommandOrControl+Shift+Space' });
 });
 
 /* ------------------------------------------------------------- finish ---- */

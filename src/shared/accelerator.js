@@ -114,7 +114,10 @@
     var primary = IS_MAC ? event.metaKey : event.ctrlKey;
     var secondary = IS_MAC ? event.ctrlKey : event.metaKey;
     if (primary) parts.push('CommandOrControl');
-    if (secondary) parts.push('Super');
+    /* On macOS the Control key is Control; Super is Command, which is already the
+     * primary modifier. Mapping both to Super made every Control shortcut mean
+     * Command, which is a different shortcut on that machine. */
+    if (secondary) parts.push(IS_MAC ? 'Control' : 'Super');
     if (event.altKey) parts.push('Alt');
     if (event.shiftKey) parts.push('Shift');
 
