@@ -10,7 +10,7 @@ const { t } = require('../shared/i18n');
 const { languageLine } = require('../shared/prompt');
 
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
-/* A dictation is short; waiting two minutes on one attempt is worse than trying
+/* A recording is short; waiting two minutes on one attempt is worse than trying
  * again, so each attempt gets its own shorter budget. */
 const ATTEMPT_TIMEOUT_MS = 45000;
 
@@ -253,7 +253,7 @@ async function transcribe({ apiKey, model, wav, settings, seconds, onAttempt }) 
         ]
       }
     ],
-    // A dictation tool must not silently drop speech, so keep the filters loose.
+    // A transcript must not silently drop speech, so keep the filters loose.
     safetySettings: [
       'HARM_CATEGORY_HARASSMENT',
       'HARM_CATEGORY_HATE_SPEECH',

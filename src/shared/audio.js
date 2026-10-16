@@ -18,8 +18,8 @@
    * platform's default, and that is deliberate — measured on this machine with
    * speech playing, the raw signal arrives at about a fourteenth of the level the
    * platform's automatic gain produces (0.009 against 0.128 RMS), which is quiet
-   * enough that speech stops being recognisable as speech at all. A dictation app
-   * that hears nothing is worse than one that hears a processed voice. */
+   * enough that speech stops being recognisable as speech at all. An app that
+   * hears nothing is worse than one that hears a processed voice. */
   var MIC_CONSTRAINTS = {
     channelCount: 1,
     echoCancellation: false,

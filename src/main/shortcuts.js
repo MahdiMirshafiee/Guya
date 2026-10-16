@@ -41,7 +41,7 @@ function applyShortcut(next) {
   return { ok: true };
 }
 
-/* Escape belongs to whatever app the user is in, except while they are dictating
+/* Escape belongs to whatever app the user is in, except while they are speaking into this app
  * here — so it is grabbed on the way into a recording and released on the way out. */
 onPhaseChange((phase) => {
   const capturing = phase === 'recording' || phase === 'starting';

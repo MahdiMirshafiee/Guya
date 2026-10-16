@@ -175,7 +175,7 @@ function statusCopy() {
     };
   }
   if (!settings.apiKey) return { text: t('error.noKey'), kind: '' };
-  if (!appState.lastTranscript) return { text: t('ui.tapToDictate'), kind: '' };
+  if (!appState.lastTranscript) return { text: t('ui.tapToRecord'), kind: '' };
   return null;
 }
 

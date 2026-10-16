@@ -1,5 +1,5 @@
 /*
- * Guya — a dictation session: capture, transcription, and the paths out of it.
+ * Guya — a recording session: capture, transcription, and the paths out of it.
  *
  * The phase itself lives in ./state; this module is the flow, the timers and the
  * failures, so there is exactly one place to read when a recording misbehaves.
@@ -104,7 +104,7 @@ function beginRecording() {
   pushPanel();
 
   /* The window shows the meter itself, so the floating orb is only for when the
-   * user is dictating into some other app. */
+   * user is speaking into some other app. */
   state.overlayShown = !windows.panelHasFocus();
 
   /* Start comes before the window: opening the microphone is the slow part, and

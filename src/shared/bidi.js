@@ -1,5 +1,5 @@
 /*
- * Text direction for content the user dictated.
+ * Text direction for content the user spoke.
  *
  * The interface has its own direction, but a transcript does not belong to the
  * interface: a Persian sentence must read right-to-left even when the app is in

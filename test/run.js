@@ -205,7 +205,7 @@ test('the microphone is asked for the level that makes speech audible', () => {
   assert.strictEqual(wanted.autoGainControl, true, 'the platform levels the input for us');
   assert.strictEqual(wanted.noiseSuppression, true);
   assert.strictEqual(wanted.echoCancellation, false);
-  assert.strictEqual(wanted.channelCount, 1, 'one channel, mono: it is a dictation, not a mix');
+  assert.strictEqual(wanted.channelCount, 1, 'one channel, mono: it is a voice, not a mix');
 });
 
 test('rms and concat behave', () => {

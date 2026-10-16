@@ -196,7 +196,7 @@ The whole product, on one screen. The header carries the app's name on the centr
 
 | State | Meter | Timer | Status line | Button |
 | --- | --- | --- | --- | --- |
-| idle, no transcript | baseline, tertiary | 0:00 | "Tap to dictate" | mic, glass |
+| idle, no transcript | baseline, tertiary | 0:00 | "Tap to record" | mic, glass |
 | recording | live levels, primary | counting | "Listening…" | stop glyph, stained material |
 | transcribing | settles to the baseline | a caption under the orb | "Transcribing…", or "Trying again (2 of 3)…" | dimmed, not interactive |
 | result | baseline | the finished duration | empty | mic |
@@ -230,7 +230,7 @@ Pushed over the recorder from the toolbar, with a back chevron. Everything the a
 │  └────────────────────────────────────────┘  │
 │  Audio is uploaded to the Gemini API …       │  ← footnote, never a row
 │                                              │
-│  Dictation                                   │
+│  Recording                                   │
 │  ┌────────────────────────────────────────┐  │
 │  │ Recording shortcut      ⇧ ⌘ Space      │  │
 │  │ Spoken language         Auto detect  ⌄ │  │
@@ -282,7 +282,7 @@ A 220×148 click-through window, horizontally centred near the top of the displa
 
 - The orb, and one line of state under it when there is something to say ("No API key yet.", an error, "Transcript ready.").
 - It is shown while the microphone is open and hidden when it is not.
-- It never takes focus: the app the user is dictating into keeps its caret, which is what makes "paste automatically" land in the right window.
+- It never takes focus: the app the user is speaking into keeps its caret, which is what makes "paste automatically" land in the right window.
 
 ### 4.6 Orb palettes
 
@@ -343,9 +343,9 @@ Error strings are part of the design. Every failure maps to one of a small, fixe
 | Every visible string comes from the dictionary, asserted by a test | Writing copy in the markup where it is read | A UI with two languages drifts the moment a sentence is written in one of them; the test fails the build when non-Latin text or a hardcoded label appears outside the dictionary, and when a key the markup asks for does not exist |
 | System menus are role menus | English labels written by the app | macOS already has these menus, in the user's language |
 | A transcript carries its own direction | The interface's direction, or `dir="auto"` | Content written in Persian must read right-to-left even in an English window, and `dir="auto"` looks only at the first strong character, so an English word opening a Persian sentence would flip the whole paragraph. The direction is decided per paragraph by counting strong characters, and the browser's bidi algorithm then places any foreign word correctly inside it |
-| The main process is split by responsibility | One long `main.js` | A dictation touches the shortcut, the OS, the provider and the windows; keeping each of them in its own module is what makes a bug read as one file. The layering is checked, not just intended: leaves first, composition root last, no cycles |
+| The main process is split by responsibility | One long `main.js` | A recording touches the shortcut, the OS, the provider and the windows; keeping each of them in its own module is what makes a bug read as one file. The layering is checked, not just intended: leaves first, composition root last, no cycles |
 | Messages cross the process boundary as keys, never as sentences | Localizing in the main process and sending the text | A renderer that is switched to the other language after the message was created cannot re-say a sentence it was handed; the key lets it translate at the moment it draws |
-| The window title is the app's name | A task title ("Dictate"), which is what this document first specified | A window title is where the user reads what the window is for, and this window has exactly one job — so the task title ("Dictate") only ever restated the screen below it, and it disagreed with the name the user sees in the Dock and the menus. The reversal is recorded here rather than quietly dropped: the earlier rule was about not wasting the titlebar, and the app's own name is not a waste |
+| The window title is the app's name | A task title named for the app's job, which is what this document first specified | A window title is where the user reads what the window is for, and this window has exactly one job — so that task title only ever restated the screen below it, and it disagreed with the name the user sees in the Dock and the menus. The reversal is recorded here rather than quietly dropped: the earlier rule was about not wasting the titlebar, and the app's own name is not a waste |
 | Settings pushed inside the recorder window | A second window, or tabs | The product is one screen plus everything-else; a pushed view keeps one window, one title, and one place to look, and Escape already means "go back" |
 | The meter is a drawn spectrum | A row of icon bars, or one loudness number repeated across the row | Icons are for controls; a level meter is a shape, and a symbol-soup waveform is a recognisable amateur tell. The bands are real or it is a lie: a row fed by a single level moves as one and says nothing about what the microphone hears, which is what an equaliser is for |
 | The audio graph is built at start-up and only the microphone is opened on demand | Building the context, the worklet and the analyser when the user presses the key | They cost a context, a file fetch and a compile, and none of them needs the device. Building them while the user is still deciding is the difference between a recording that begins with the first word and one that begins after the first word |
@@ -367,13 +367,15 @@ Error strings are part of the design. Every failure maps to one of a small, fixe
 | Escape captured only while recording | Escape registered globally | A globally captured Escape breaks every other app on the machine |
 | The transcript's job description lives in systemInstruction | A sentence in the user turn | It is the model's role, not the user's message: it never changes with the user's wording, and keeping it out of the user turn keeps that turn short |
 | The instructions to the model are one English text, not a translation of the interface | A prompt per interface language, which is what this shipped with | There are two audiences here and the dictionary is only for one of them. The user reads the window; the model reads the job description. Nobody in the window ever sees this text, so translating it bought nothing, doubled what had to be kept in step, and made the transcript depend on the window's language — a Persian prompt was doing the work of an English one in an English window and the other way round. It is precise in exactly one place now (`src/shared/prompt.js`), and a test fails if a second language creeps back in |
-| The rules name what matters, not just the verbatim rule | "Transcribe it verbatim" and nothing else | A bare verbatim instruction still leaves the hard cases to the model's judgement: a speaker switching language mid-sentence, a word dictated to be kept in its own script, a number said as words, a name that must not be re-spaced, a phrase that sounds like a command, a pause that wants a paragraph. Each of those is a rule in the prompt with its own line, because each of them is a way a transcript comes back subtly wrong |
+| The rules name what matters, not just the verbatim rule | "Transcribe it verbatim" and nothing else | A bare verbatim instruction still leaves the hard cases to the model's judgement: a speaker switching language mid-sentence, a word spoken in another script that has to stay in it, a number said as words, a name that must not be re-spaced, a phrase that sounds like a command, a pause that wants a paragraph. Each of those is a rule in the prompt with its own line, because each of them is a way a transcript comes back subtly wrong |
 | Nothing spoken is ever an instruction | Assume the speaker is honest | The audio is untrusted input that reaches a model with tools it could be asked to use. The prompt says outright that a spoken command, question or "ignore your instructions" is text to write down and not to act on |
 | The answer length is capped to the audio length | No cap | A model that keeps writing after the speech ends costs the user seconds of wait for text nobody asked for |
 | The provider connection is pre-connected | Paying the handshake after the user stops | The DNS and TLS round trip happens while the user is still speaking |
 | Extended thinking switched off for flash models | Leaving the default | Thinking buys nothing for transcription and costs seconds of the wait, which is the thing the user actually feels |
 | A retry says so, with numbers | Failing silently and retrying | "Trying again (2 of 3)…" explains the wait instead of restating it |
 | The window buttons are hidden until the pointer reaches for them | Reserving a band of the titlebar for them | The buttons belong to the window, not to the app: hiding them until hover is what lets the title sit on the centre line and the controls sit against the opposite edge in every language, with nothing pre-reserved |
+| The window is dragged by an empty strip at the top, not by its header | Making the header the drag region, which is what this shipped with | A header that drags the window also summons the window buttons when the pointer enters it, and the control in that corner — the back chevron — is the one people reach for. The click went to the buttons that had just appeared and the control looked broken. The strip holds nothing at all, so no control can ever be underneath it, and the window still moves by its top edge |
+| The panel accepts the first mouse | Requiring a click to focus the window first | This window spends its life in the background, because the shortcut works from any app. Arriving at it and clicking a control is one gesture; in the default state the first click only focused the window, which reads as a control that needs two clicks |
 | A setting that needs a system permission is refused until the system grants it | Letting the setting be on and failing later | "Paste automatically" cannot work without Accessibility, so the switch goes back to off, macOS is asked to put up its own dialog, and the form shows one sentence and the two actions that fix it. The app never claims a capability the platform has not granted |
 | The settings field holds the instructions themselves | The field as a place for the user's own vocabulary, appended to the user turn, with the field starting empty — which is what this shipped with | Two texts doing one job: rules in code the user could not see, and a box the user could type into that only added to them. The box is the instructions now. Whatever is in it is what the model is told, which means the window shows exactly what the app does, and both the vocabulary and the rules are the user's to change |
 | The instructions are seeded into the field once, from a revision marker, never compared against the text | Deciding by looking at what is in the field | Comparing contents to decide whether to overwrite cannot tell an untouched install from a user who deliberately wrote something else, so it either clobbers an edit or leaves an old vocabulary-only value doing a whole job description's work. A revision marker in the settings file answers the one question that matters — was this written before the field changed meaning — and the merge on that upgrade keeps whatever the user had written underneath the rules |
@@ -422,7 +424,7 @@ Run through this before calling any screen finished.
 - [ ] Nothing moves on a timer while the microphone is live — every movement is the input.
 - [ ] No spinner.
 - [ ] The status line is empty at rest, and the line is reserved so nothing shifts.
-- [ ] Nothing in the titlebar reserves space for the window buttons, and the title is on the centre line in both directions.
+- [ ] Nothing in the titlebar reserves space for the window buttons, the title is on the centre line in both directions, and no control is anywhere the buttons can appear.
 - [ ] A field whose label shares its line with an action puts the label on the leading edge and the action on the trailing one.
 - [ ] The system prompt field shows exactly what is sent, starts as the app's own text, is left-to-right in both directions, and has a way back to the default.
 - [ ] A setting that depends on a system permission cannot be on without it, and the refusal names the pane and offers it.

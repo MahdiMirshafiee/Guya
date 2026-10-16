@@ -16,7 +16,7 @@ app). An orb floats above the desktop so the microphone is never live invisibly.
   something looks or behaves, change that document in the same change.**
 - `README.md` is the user-facing guide, in Persian, with English technical terms.
 - `src/main/` is the main process, split by responsibility: `index.js` starts and
-  wires, `recorder.js` owns a dictation session, `state.js` owns the phase,
+  wires, `recorder.js` owns a recording session, `state.js` owns the phase,
   `ipc.js` is the whole contract with the renderers, `system.js` is everything the
   OS is asked for, `platform.js` is what differs per system. No cycles: leaves
   first, composition last.

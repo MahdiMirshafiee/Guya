@@ -3,7 +3,7 @@
  *
  * This file is the composition root: it starts the pieces and wires the ones
  * that need to know about each other. Behaviour lives in the modules beside it —
- * ./recorder for a dictation session, ./state for the phase, ./ipc for what the
+ * ./recorder for a recording session, ./state for the phase, ./ipc for what the
  * renderers may ask for, ./system for what the OS is asked for.
  */
 'use strict';

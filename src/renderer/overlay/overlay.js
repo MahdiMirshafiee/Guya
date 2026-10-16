@@ -182,7 +182,7 @@ async function openMic() {
 }
 
 /* The context, the worklet and the analyser, once, as early as possible: building
- * them while the user is still deciding to dictate is what makes the start
+ * them while the user is still deciding to record is what makes the start
  * immediate, and none of it touches the microphone. */
 function prepareGraph() {
   if (graphReady) return graphReady;
