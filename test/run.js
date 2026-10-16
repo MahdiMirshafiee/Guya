@@ -178,6 +178,36 @@ test('wavFromFloat32 keeps amplitude', () => {
   assert.ok(peak === 16383 || peak === 16384, `0.5 amplitude should map to 0.5 * 32767, got ${peak}`);
 });
 
+test('the level that counts as speech sits between a room and a voice', () => {
+  /* Measured on this machine over eight seconds of each, with the platform's gain
+   * doing its work: a quiet room means 0.0024 RMS with a 90th percentile of 0.0052,
+   * someone talking means 0.0145 with a 90th percentile of 0.0431. The floor has to
+   * sit inside that gap — above the room, well under a voice. */
+  const room = { mean: 0.0024, p90: 0.0052 };
+  const voice = { mean: 0.0145, p90: 0.0431 };
+  const floor = GuyaAudio.speechLevel(0);
+  assert.ok(floor > room.p90, 'the room must not reach it: ' + floor + ' vs ' + room.p90);
+  assert.ok(floor < voice.mean, 'and a voice must clear it easily: ' + floor + ' vs ' + voice.mean);
+
+  /* A room that is loud on its own raises the bar rather than being called speech. */
+  assert.ok(GuyaAudio.speechLevel(0.02) > 0.02, 'a loud room needs a louder voice to count');
+  assert.strictEqual(GuyaAudio.speechLevel(0.02), GuyaAudio.speechLevel(0.02), 'and it is a pure function of the room');
+});
+
+test('the microphone is asked for the level that makes speech audible', () => {
+  /* Measured on this machine with speech playing: the raw signal arrives at about
+   * a fourteenth of the level the platform's automatic gain produces. With it off,
+   * a recording of someone talking is quiet enough that nothing recognises it as
+   * speech — including this app, which then reports "no speech detected" and never
+   * asks the provider. Echo cancellation stays off: it selects the system's
+   * voice-processing unit, which is built for calls and gates quiet speech. */
+  const wanted = GuyaAudio.MIC_CONSTRAINTS;
+  assert.strictEqual(wanted.autoGainControl, true, 'the platform levels the input for us');
+  assert.strictEqual(wanted.noiseSuppression, true);
+  assert.strictEqual(wanted.echoCancellation, false);
+  assert.strictEqual(wanted.channelCount, 1, 'one channel, mono: it is a dictation, not a mix');
+});
+
 test('rms and concat behave', () => {
   assert.strictEqual(GuyaAudio.rms(new Float32Array(0)), 0);
   const half = GuyaAudio.rms(new Float32Array([0.5, -0.5, 0.5, -0.5]));
@@ -367,7 +397,11 @@ test('bad values fall back to defaults', () => {
   const settings = store.update({ language: 'klingon', shortcut: 'not a shortcut!', apiKey: 42, prompt: 'x'.repeat(9000) });
   assert.strictEqual(settings.language, 'auto');
   assert.strictEqual(settings.apiKey, 'key-123', 'non-string keys are ignored');
-  assert.strictEqual(settings.prompt.length, 4000, 'prompt is truncated');
+  /* The cap only exists to keep a runaway paste out of the settings file, and it
+   * has to sit above the app's own instructions: a cap that cuts them in half is a
+   * bug nobody notices until a transcript is subtly wrong. */
+  assert.strictEqual(settings.prompt.length, 8000, 'a runaway prompt is cut off');
+  assert.ok(settings.prompt.length > GuyaPrompt.DEFAULT_PROMPT.length, 'but the default fits with room to spare');
   assert.ok(/^[A-Za-z0-9+]+$/.test(settings.shortcut));
 });
 
@@ -753,6 +787,25 @@ test('every message exists in both languages', () => {
   });
 });
 
+test('no key is defined twice', () => {
+  /* A second definition of the same key silently wins, and the first one looks
+   * perfectly correct to anyone reading it — which is how a message the user was
+   * reading came from a line nobody knew was live. The object above cannot show
+   * this: by the time it exists, the duplicate is already gone. */
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'i18n.js'), 'utf8');
+  const seen = new Map();
+  const pattern = /^\s*'([A-Za-z0-9_.]+)':\s*\{/gm;
+  let match;
+  while ((match = pattern.exec(source))) {
+    const line = source.slice(0, match.index).split('\n').length;
+    if (seen.has(match[1])) {
+      assert.fail(`${match[1]} is defined twice: line ${seen.get(match[1])} and line ${line}`);
+    }
+    seen.set(match[1], line);
+  }
+  assert.ok(seen.size > 40, 'the dictionary should be read here, found ' + seen.size);
+});
+
 test('placeholders are substituted', () => {
   assert.strictEqual(GuyaI18n.t('fa', 'error.http', { status: 404 }), 'خطای HTTP 404');
   assert.strictEqual(GuyaI18n.t('en', 'error.http', { status: 500 }), 'HTTP error 500');
@@ -797,8 +850,10 @@ test('the system prompt is one precise English job description', () => {
     ['no bracketed annotations', /Never add bracketed notes/],
     ['never invents words', /Never invent words/],
     ['never greets or replies', /never greet the speaker, never answer a question/],
-    ['silence and noise return nothing', /noise, breathing, music or sounds you cannot make out/],
-    ['silence returns nothing', /return nothing at all/]
+    ['silence and noise mean no speech', /set "speech" to false and "text" to ""/],
+    ['the empty answer is the correct one', /this is a complete and correct/],
+    ['no apologies instead of an answer', /An apology or an explanation of what you cannot do is not a transcript/],
+    ['the answer shape is JSON', /\{"speech": true, "text": "the transcript"\}/]
   ];
   required.forEach((rule) => {
     assert.ok(rule[1].test(prompt), 'the prompt says nothing about: ' + rule[0]);
