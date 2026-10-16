@@ -19,6 +19,11 @@ const F = {
   resetPrompt: document.getElementById('resetPrompt'),
   shortcut: document.getElementById('shortcut'),
   silenceStop: document.getElementById('silenceStop'),
+  silenceCustom: document.getElementById('silenceCustom'),
+  silenceUnit: document.getElementById('silenceUnit'),
+  noSpeechStop: document.getElementById('noSpeechStop'),
+  noSpeechCustom: document.getElementById('noSpeechCustom'),
+  noSpeechUnit: document.getElementById('noSpeechUnit'),
   attempts: document.getElementById('attempts'),
   copyToClipboard: document.getElementById('copyToClipboard'),
   pasteAfterTranscribe: document.getElementById('pasteAfterTranscribe'),
@@ -69,13 +74,51 @@ function currentFormPatch() {
     language: F.language.value,
     prompt: F.prompt.value,
     uiLanguage: F.uiLanguageSelect.value || settings.uiLanguage,
-    silenceStopMs: Number(F.silenceStop.value),
+    silenceStopMs: durationValue(F.silenceStop, F.silenceCustom),
+    noSpeechStopMs: durationValue(F.noSpeechStop, F.noSpeechCustom),
     attempts: Number(F.attempts.value),
     shortcut: shortcutDraft || settings.shortcut,
     copyToClipboard: F.copyToClipboard.checked,
     pasteAfterTranscribe: F.pasteAfterTranscribe.checked,
     launchAtLogin: F.launchAtLogin.checked
   };
+}
+
+/* A duration is offered as a short list of sensible values plus "Custom…", which
+ * reveals a number in seconds. The list is what is offered, not what is allowed: the
+ * store accepts anything in range, so 4.5 seconds survives a restart. */
+function secondsOf(ms) {
+  return Math.round((ms / 1000) * 10) / 10;
+}
+
+function durationValue(select, input) {
+  if (select.value !== CUSTOM_MODEL) return Number(select.value);
+  const seconds = Number(input.value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  return Math.round(seconds * 1000);
+}
+
+function renderDuration(select, input, unit, currentMs, choices, language) {
+  const number = new Intl.NumberFormat(language);
+  const list = choices && choices.length ? choices : [0];
+  const current = String(currentMs);
+  const known = list.some((ms) => String(ms) === current);
+  select.innerHTML = '';
+  list.forEach((ms) => {
+    const option = document.createElement('option');
+    option.value = String(ms);
+    option.textContent = ms === 0 ? t('ui.silenceOff') : t('ui.secondsShort', { count: number.format(secondsOf(ms)) });
+    select.appendChild(option);
+  });
+  const custom = document.createElement('option');
+  custom.value = CUSTOM_MODEL;
+  custom.textContent = t('ui.customDuration');
+  select.appendChild(custom);
+  select.value = known ? current : CUSTOM_MODEL;
+  const isCustom = select.value === CUSTOM_MODEL;
+  input.hidden = !isCustom;
+  unit.hidden = !isCustom;
+  if (isCustom) input.value = String(secondsOf(currentMs));
 }
 
 /* A curated list plus a final "Custom…" entry: provider model names change
@@ -134,17 +177,8 @@ function renderLanguages() {
   });
   F.uiLanguageSelect.value = language;
 
-  const current = String(settings.silenceStopMs);
-  F.silenceStop.innerHTML = '';
-  (appState.silenceChoices || [10000]).forEach((ms) => {
-    const option = document.createElement('option');
-    option.value = String(ms);
-    option.textContent = ms === 0
-      ? t('ui.silenceOff')
-      : t('ui.secondsShort', { count: new Intl.NumberFormat(language).format(ms / 1000) });
-    F.silenceStop.appendChild(option);
-  });
-  F.silenceStop.value = current;
+  renderDuration(F.silenceStop, F.silenceCustom, F.silenceUnit, settings.silenceStopMs, appState.silenceChoices, language);
+  renderDuration(F.noSpeechStop, F.noSpeechCustom, F.noSpeechUnit, settings.noSpeechStopMs, appState.noSpeechChoices, language);
 
   const attemptChoices = appState.attemptChoices || [3];
   F.attempts.innerHTML = '';
@@ -378,7 +412,22 @@ function initSettings() {
   });
 
   on(F.language, 'change', () => saveAndRepaint());
-  on(F.silenceStop, 'change', () => saveAndRepaint());
+  on(F.silenceStop, 'change', () => {
+    const isCustom = F.silenceStop.value === CUSTOM_MODEL;
+    F.silenceCustom.hidden = !isCustom;
+    F.silenceUnit.hidden = !isCustom;
+    if (isCustom) F.silenceCustom.focus();
+    else saveAndRepaint();
+  });
+  on(F.noSpeechStop, 'change', () => {
+    const isCustom = F.noSpeechStop.value === CUSTOM_MODEL;
+    F.noSpeechCustom.hidden = !isCustom;
+    F.noSpeechUnit.hidden = !isCustom;
+    if (isCustom) F.noSpeechCustom.focus();
+    else saveAndRepaint();
+  });
+  commitOnBlur(F.silenceCustom, () => saveAndRepaint());
+  commitOnBlur(F.noSpeechCustom, () => saveAndRepaint());
   on(F.attempts, 'change', () => saveAndRepaint());
   on(F.uiLanguageSelect, 'change', async () => {
     await saveSettings(Object.assign(currentFormPatch(), { uiLanguage: F.uiLanguageSelect.value }));

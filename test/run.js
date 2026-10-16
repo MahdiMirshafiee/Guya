@@ -179,20 +179,25 @@ test('wavFromFloat32 keeps amplitude', () => {
   assert.ok(peak === 16383 || peak === 16384, `0.5 amplitude should map to 0.5 * 32767, got ${peak}`);
 });
 
-test('the level that counts as speech sits between a room and a voice', () => {
+test('the gate opens between a room and a voice', () => {
   /* Measured on this machine over eight seconds of each, with the platform's gain
    * doing its work: a quiet room means 0.0024 RMS with a 90th percentile of 0.0052,
-   * someone talking means 0.0145 with a 90th percentile of 0.0431. The floor has to
-   * sit inside that gap — above the room, well under a voice. */
-  const room = { mean: 0.0024, p90: 0.0052 };
-  const voice = { mean: 0.0145, p90: 0.0431 };
-  const floor = GuyaAudio.speechLevel(0);
-  assert.ok(floor > room.p90, 'the room must not reach it: ' + floor + ' vs ' + room.p90);
-  assert.ok(floor < voice.mean, 'and a voice must clear it easily: ' + floor + ' vs ' + voice.mean);
+   * someone talking means 0.0145 with a 90th percentile of 0.0431. The gate's own
+   * onset threshold has to land inside that gap — above the room, under a voice —
+   * and it has to be reached by the room's floor, not by a constant. */
+  const room = { min: 0.0017, p90: 0.0052 };
+  const voice = { mean: 0.0145 };
+  /* The floor follows the room's quietest frame, which is what it is given here. */
+  const gate = GuyaAudio.createVoiceGate({ initialFloor: room.min });
+  const quiet = gate.push(room.p90, 64);
+  assert.ok(quiet.threshold > room.p90, 'the room at its loudest must not reach it: ' + quiet.threshold);
+  assert.ok(quiet.threshold < voice.mean, 'and a voice must clear it easily: ' + quiet.threshold);
+  assert.strictEqual(quiet.voiced, false, 'the room is not speech');
 
-  /* A room that is loud on its own raises the bar rather than being called speech. */
-  assert.ok(GuyaAudio.speechLevel(0.02) > 0.02, 'a loud room needs a louder voice to count');
-  assert.strictEqual(GuyaAudio.speechLevel(0.02), GuyaAudio.speechLevel(0.02), 'and it is a pure function of the room');
+  /* A voice sustained past the onset window does open it. */
+  let voiced = false;
+  for (let i = 0; i < 6; i++) voiced = gate.push(voice.mean * 1.6, 64).voiced || voiced;
+  assert.strictEqual(voiced, true, 'and a voice does');
 });
 
 test('the microphone is asked for the level that makes speech audible', () => {
@@ -289,6 +294,94 @@ test('bands are logarithmic, and fold into the orb four at a time', () => {
   assert.ok(narrow[3] > 0, 'the high cloud still reads bands below 8 kHz');
 });
 
+group('silence detection');
+
+/* The detector, driven by synthetic audio: a room that breathes, speech with a
+ * syllable rhythm and pauses, and the things that used to keep it alive — a fan, a
+ * keyboard, a click. Each case states what should happen within 90 seconds of
+ * simulated audio. */
+(function silenceSimulations() {
+  let seed = 662;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const room = (base, wobble) => base * (1 + (rnd() - 0.5) * (wobble === undefined ? 0.6 : wobble));
+  const speech = (t, level) => ((t % 1300) > 1000 ? room(0.0024) : level * (0.25 + 1.5 * rnd()));
+
+  function run(rmsAt, options) {
+    const gate = GuyaAudio.createVoiceGate((options && options.gate) || {});
+    const endpointer = GuyaAudio.createEndpointer((options && options.ep) || {});
+    let stopped = null;
+    let voicedMs = 0;
+    for (let t = 0; t < 90000; t += 64) {
+      const g = gate.push(rmsAt(t), 64);
+      if (g.voiced) voicedMs += 64;
+      const reason = endpointer.push(g.voiced, 64);
+      if (reason) {
+        stopped = reason;
+        break;
+      }
+    }
+    return { stopped, voicedMs };
+  }
+
+  test('a quiet room with nobody speaking stops itself', () => {
+    const result = run(() => room(0.0024));
+    assert.strictEqual(result.stopped, 'no-speech', 'nothing was said, so nothing is sent');
+    assert.strictEqual(result.voicedMs, 0, 'and no speech was counted');
+  });
+
+  test('a keyboard does not keep the microphone open', () => {
+    const result = run((t) => (t % 3000 < 64 ? 0.05 : room(0.0024)));
+    assert.strictEqual(result.stopped, 'no-speech', 'a click is one frame, and speech takes two');
+  });
+
+  test('someone who speaks and stops is cut off shortly after', () => {
+    const result = run((t) => (t < 5000 ? speech(t, 0.04) : room(0.0024)));
+    assert.strictEqual(result.stopped, 'end-of-speech');
+    assert.ok(result.voicedMs > 3000, 'their words were counted: ' + result.voicedMs + 'ms');
+  });
+
+  test('a quiet speaker is heard, not dismissed as silence', () => {
+    /* The old fixed floor of 0.008 called this silence and never asked the provider. */
+    const result = run((t) => (t < 5000 ? speech(t, 0.006) : room(0.0024)));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'a quiet voice is still a voice');
+    assert.ok(result.voicedMs > 2000, result.voicedMs + 'ms of speech counted');
+  });
+
+  test('a long sentence is not cut off in the middle', () => {
+    const result = run((t) => (t < 30000 ? speech(t, 0.04) : room(0.0024)));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'thirty seconds of talking keeps it open');
+    assert.ok(result.voicedMs > 20000, result.voicedMs + 'ms counted');
+  });
+
+  test('a fan that starts after the user speaks does not hold it open', () => {
+    const result = run((t) => (t < 2000 ? speech(t, 0.04) : room(0.003 + 0.017 * Math.min(1, (t - 2000) / 8000), 0.2)));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'steady noise is not speech');
+  });
+
+  test('a room that is loud from the start stops rather than hanging', () => {
+    /* A very noisy room is indistinguishable from speech for the first seconds; what
+     * matters is that it cannot hang, and that the second recording knows the room. */
+    const result = run((t) => (t < 64 ? 0 : room(0.010, 0.2)));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'it stops');
+    assert.ok(result.voicedMs < 90000, 'and it does stop');
+  });
+
+  test('a click during the pause after speech does not restart the wait', () => {
+    const result = run((t) => (t < 4000 ? speech(t, 0.04) : (t % 2000 < 64 ? 0.05 : room(0.0024))));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'the pause is still a pause');
+  });
+
+  test('speaking in a noisy room still ends when the speaking does', () => {
+    const result = run((t) => (t < 6000 ? Math.max(speech(t, 0.05), room(0.010, 0.2)) : room(0.010, 0.2)));
+    assert.strictEqual(result.stopped, 'end-of-speech');
+  });
+
+  test('both timers can be switched off', () => {
+    const result = run(() => room(0.0024), { ep: { noSpeechMs: 0, endSilenceMs: 0 } });
+    assert.strictEqual(result.stopped, null, 'a recording with no limits runs until the user stops it');
+  });
+})();
+
 /* ======================================================== accelerator ==== */
 
 group('accelerator');
@@ -373,12 +466,24 @@ test('defaults are complete', () => {
   assert.ok(settings.shortcut.indexOf('CommandOrControl') === 0);
 });
 
-test('the silence stop only accepts the offered durations', () => {
-  assert.strictEqual(store.read().silenceStopMs, 10000, 'sensible default');
-  assert.strictEqual(store.update({ silenceStopMs: 3000 }).silenceStopMs, 3000);
-  assert.strictEqual(store.update({ silenceStopMs: 4242 }).silenceStopMs, 3000, 'junk keeps the previous value');
+test('the two waits take any duration in range, and 0 means off', () => {
+  assert.strictEqual(store.read().silenceStopMs, 3000, 'three seconds after the last word');
+  assert.strictEqual(store.read().noSpeechStopMs, 8000, 'eight seconds of nobody speaking');
+
+  assert.strictEqual(store.update({ silenceStopMs: 2000 }).silenceStopMs, 2000);
+  /* A value the picker does not offer is still a value the user meant: the list is
+   * what is offered, not what is allowed. */
+  assert.strictEqual(store.update({ silenceStopMs: 4500 }).silenceStopMs, 4500, 'a custom duration survives');
+  assert.strictEqual(store.update({ noSpeechStopMs: 12000 }).noSpeechStopMs, 12000);
   assert.strictEqual(store.update({ silenceStopMs: 0 }).silenceStopMs, 0, 'off is a real choice');
-  store.update({ silenceStopMs: 10000 });
+  assert.strictEqual(store.update({ noSpeechStopMs: 0 }).noSpeechStopMs, 0);
+
+  /* Junk keeps the previous value rather than wiping a working setting. */
+  assert.strictEqual(store.update({ silenceStopMs: 'soon' }).silenceStopMs, 0, 'a string is not a duration');
+  assert.strictEqual(store.update({ silenceStopMs: 12 }).silenceStopMs, 1000, 'and a tenth of a second is the floor');
+  assert.strictEqual(store.update({ silenceStopMs: 900000 }).silenceStopMs, 120000, 'two minutes is the ceiling');
+
+  store.update({ silenceStopMs: 3000, noSpeechStopMs: 8000 });
 });
 
 test('uiLanguage only accepts fa or en', () => {

@@ -15,7 +15,7 @@ const state_ = require('./state');
 const recorder = require('./recorder');
 const shortcutApi = require('./shortcuts');
 const i18n = require('../shared/i18n');
-const { KNOWN_MODELS, SILENCE_CHOICES, ATTEMPT_CHOICES } = require('../shared/defaults');
+const { KNOWN_MODELS, SILENCE_CHOICES, ATTEMPT_CHOICES, NO_SPEECH_CHOICES } = require('../shared/defaults');
 
 const lang = () => store.read().uiLanguage;
 
@@ -27,6 +27,7 @@ function register() {
     languages: i18n.LANGUAGES,
     knownModels: KNOWN_MODELS,
     silenceChoices: SILENCE_CHOICES,
+    noSpeechChoices: NO_SPEECH_CHOICES,
     attemptChoices: ATTEMPT_CHOICES,
     platform: process.platform,
     version: app.getVersion(),

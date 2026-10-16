@@ -12,7 +12,7 @@ const store = require('./store');
 const windows = require('./windows');
 const platform = require('./platform');
 const accelerator = require('../shared/accelerator');
-const { KNOWN_MODELS, SILENCE_CHOICES, ATTEMPT_CHOICES } = require('../shared/defaults');
+const { KNOWN_MODELS, SILENCE_CHOICES, ATTEMPT_CHOICES, NO_SPEECH_CHOICES } = require('../shared/defaults');
 
 const state = {
   phase: 'idle', // idle | starting | recording | transcribing | done | error
@@ -60,6 +60,7 @@ function publicState() {
     accent: platform.systemAccent(),
     knownModels: KNOWN_MODELS,
     silenceChoices: SILENCE_CHOICES,
+    noSpeechChoices: NO_SPEECH_CHOICES,
     attemptChoices: ATTEMPT_CHOICES,
     version: app.getVersion(),
     uiLanguage: settings.uiLanguage

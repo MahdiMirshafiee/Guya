@@ -368,6 +368,29 @@ class Cdp {
   check('the model picker is populated', (await panel.eval(`document.getElementById('modelSelect').options.length`)) > 1);
   check('the spoken-language picker is populated', (await panel.eval(`document.getElementById('language').options.length`)) > 5);
   check('the silence stop offers real choices', (await panel.eval(`document.getElementById('silenceStop').options.length`)) >= 4);
+  check('stopping when nobody speaks is a setting of its own', (await panel.eval(`document.getElementById('noSpeechStop').options.length`)) >= 4);
+
+  /* The list is what is offered, not what is allowed: someone who wants 4.5
+   * seconds types it and it survives. */
+  await panel.eval(`(() => {
+    const select = document.getElementById('silenceStop');
+    select.value = '__custom__';
+    select.dispatchEvent(new Event('change'));
+    const field = document.getElementById('silenceCustom');
+    field.value = '4.5';
+    field.dispatchEvent(new Event('blur'));
+    return true;
+  })()`);
+  await sleep(700);
+  const custom = await panel.eval('guya.getAppInfo().then((i) => i.settings.silenceStopMs)');
+  check('a duration the list does not offer still sticks', custom === 4500, String(custom));
+  await panel.eval(`(() => {
+    const select = document.getElementById('silenceStop');
+    select.value = '3000';
+    select.dispatchEvent(new Event('change'));
+    return true;
+  })()`);
+  await sleep(500);
   check('the attempt count is offered', (await panel.eval(`document.getElementById('attempts').options.length`)) >= 3);
   check('durations are locale-formatted', /[۰-۹]/.test(await panel.eval(`document.getElementById('silenceStop').options[1].textContent`)));
   check('the key is present', (await panel.eval(`document.getElementById('apiKey').value.length`)) > 0);

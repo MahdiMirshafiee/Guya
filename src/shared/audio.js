@@ -186,27 +186,6 @@
     return out;
   }
 
-  /* ------------------------------------------------------------ speaking --- */
-
-  /* How loud something has to be to count as speech, given how quiet the room
-   * gets. Measured on this machine with the platform's gain doing its work, over
-   * eight seconds of each:
-   *
-   *   a quiet room   RMS mean 0.0024, 90th percentile 0.0052
-   *   someone talking  RMS mean 0.0145, 90th percentile 0.0431
-   *
-   * So the level separates them cleanly and the obvious alternatives do not: the
-   * zero-crossing rate was 0.064 against 0.089, and the frame-to-frame spread 0.69
-   * against 0.78 — both useless, which is why this is measured rather than tuned by
-   * ear. The floor sits above the room and well below a voice; the multiplier
-   * raises it in a room that is simply loud, where the quiet level it tracks is
-   * high too. */
-  var SPEECH_RMS_FLOOR = 0.008;
-
-  function speechLevel(roomQuiet) {
-    return Math.max(SPEECH_RMS_FLOOR, (roomQuiet || 0) * 4);
-  }
-
   /* One band per cloud in the orb: the same measurement, folded into the ranges
    * the sphere's colours are driven by. The band indices come from the same edges
    * `spectrum` used, so the two stay aligned whatever the context's rate is —
@@ -225,11 +204,78 @@
     });
   }
 
+  /* --------------------------------------------------------- voice gate --- */
+
+  /* Two jobs that used to be one measurement, done properly.
+   *
+   * The gate answers "is this the room, or is this someone talking?" with a floor
+   * that follows the room in BOTH directions: it is the quietest frame of the last
+   * two and a half seconds, so a fan starting or automatic gain settling cannot
+   * leave it behind — the previous version could only ever move down, which made its
+   * threshold a constant in any room with steady noise. While a voice is present it
+   * rises at most 1.3x per second, except when the signal is *steady* (its peak
+   * barely moves over most of a second): that is a fan or a hiss, not speech, and
+   * speech modulates far too much to look like it.
+   *
+   * The endpointer answers "are they finished?" with two different waits, because
+   * "nobody has spoken yet" and "they have stopped speaking" are not the same
+   * question: waiting ten seconds for the first is ten seconds of the user's life
+   * and ten seconds of silence uploaded to the provider.
+   *
+   * Both are pure and count audio time rather than wall-clock time, so they behave
+   * the same in a test and in a slow renderer. */
+  function createVoiceGate(options) {
+    var o = { windowMs: 2500, minThreshold: 0.0035, onsetRatio: 3.5, offsetRatio: 2.2, onsetMs: 100, hangMs: 400, voicedRisePerSec: 1.3, initialFloor: 0.002, hardFloor: 0.0003, steadyMs: 800, steadyRatio: 2.2 };
+    if (options) for (var k in options) o[k] = options[k];
+    var history = [], clock = 0, floor = o.initialFloor, voiced = false, onsetRun = 0, hang = 0;
+    function push(rms, frameMs) {
+      clock += frameMs;
+      history.push([clock, rms]);
+      while (history.length && history[0][0] < clock - o.windowMs) history.shift();
+      var low = Infinity, high = 0;
+      for (var i = 0; i < history.length; i++) {
+        if (history[i][1] < low) low = history[i][1];
+        if (history[i][1] > high) high = history[i][1];
+      }
+      var target = Math.max(low, o.hardFloor);
+      /* Steady sound (a fan, hiss, AGC gain settling) barely moves from frame to frame; speech does. */
+      var span = history.length > 1 ? clock - history[0][0] : 0;
+      var steady = span >= o.steadyMs && high <= low * o.steadyRatio;
+      if (target <= floor) floor = target;
+      else if (steady) floor = target;
+      else if (clock >= o.windowMs) floor = voiced ? Math.min(target, floor * Math.pow(o.voicedRisePerSec, frameMs / 1000)) : target;
+      var on = Math.max(o.minThreshold, floor * o.onsetRatio);
+      var off = Math.max(o.minThreshold * 0.6, floor * o.offsetRatio);
+      var credit = 0;
+      if (voiced) {
+        if (rms >= off) hang = o.hangMs;
+        else { hang -= frameMs; if (hang <= 0) { voiced = false; onsetRun = 0; } }
+      } else if (rms >= on) {
+        onsetRun += frameMs;
+        if (onsetRun >= o.onsetMs) { voiced = true; hang = o.hangMs; credit = onsetRun - frameMs; }
+      } else onsetRun = 0;
+      return { voiced: voiced, floor: floor, threshold: on, creditMs: credit };
+    }
+    return { push: push };
+  }
+
+  function createEndpointer(options) {
+    var o = { noSpeechMs: 8000, endSilenceMs: 3000 };
+    if (options) for (var k in options) o[k] = options[k];
+    var heard = false, quiet = 0, waited = 0;
+    return {
+      push: function (voiced, frameMs) {
+        if (voiced) { heard = true; quiet = 0; return null; }
+        if (heard) { quiet += frameMs; return o.endSilenceMs > 0 && quiet >= o.endSilenceMs ? 'end-of-speech' : null; }
+        waited += frameMs; return o.noSpeechMs > 0 && waited >= o.noSpeechMs ? 'no-speech' : null;
+      },
+      heardSpeech: function () { return heard; }
+    };
+  }
+
   return {
     TARGET_RATE: TARGET_RATE,
     MIC_CONSTRAINTS: MIC_CONSTRAINTS,
-    SPEECH_RMS_FLOOR: SPEECH_RMS_FLOOR,
-    speechLevel: speechLevel,
     SPECTRUM_LOW_HZ: SPECTRUM_LOW_HZ,
     SPECTRUM_HIGH_HZ: SPECTRUM_HIGH_HZ,
     floatToInt16: floatToInt16,
@@ -241,6 +287,8 @@
     wavFromFloat32: wavFromFloat32,
     rms: rms,
     durationSeconds: durationSeconds,
+    createVoiceGate: createVoiceGate,
+    createEndpointer: createEndpointer,
     bandEdges: bandEdges,
     spectrum: spectrum,
     foldBands: foldBands

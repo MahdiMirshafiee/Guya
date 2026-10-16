@@ -18,7 +18,8 @@ const canvas = document.getElementById('orb-canvas');
 
 const BOX = 96; // canvas box in CSS pixels
 const ORB_R = 27; // sphere radius
-const DEFAULT_SILENCE_STOP_MS = 10000;
+const DEFAULT_SILENCE_STOP_MS = 3000;
+const DEFAULT_NO_SPEECH_STOP_MS = 8000;
 
 /* The meter's resolution, and the two consumers of the same measurement: the
  * panel draws all of these bars, and the orb's four colours each take one range
@@ -50,27 +51,14 @@ let pendingStop = false;
 let sessionToken = 0;
 let bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
 let levelTickAt = 0;
-let silenceStopMs = DEFAULT_SILENCE_STOP_MS;
-let lastVoiceAt = 0;
+let silenceStopMs = DEFAULT_SILENCE_STOP_MS; // after the user has spoken
+let noSpeechStopMs = DEFAULT_NO_SPEECH_STOP_MS; // nobody has spoken yet
 let voiceMs = 0;
-
-/* Is this the room, or is this someone talking?
- *
- * A quiet room and a voice differ by a factor of six in level and by nothing at
- * all in zero-crossing rate or in how much the level moves — both were measured —
- * so the level is what this uses, against a floor that sits between them and rises
- * in a room that is loud all by itself. What was actually said, and whether
- * anything was, is still the model's answer to give: this decides only whether the
- * recording is worth asking about, and whether the room has gone quiet. */
-const room = {
-  quiet: GuyaAudio.SPEECH_RMS_FLOOR,
-  update(rms) {
-    if (rms < this.quiet) this.quiet = rms;
-  },
-  level() {
-    return GuyaAudio.speechLevel(this.quiet);
-  }
-};
+let gate = null;
+let endpointer = null;
+let lastGate = null;
+let frameVoiced = []; // one flag per entry of `chunks`
+let lastRoomFloor = 0.002; // the room is the same for the next recording: start where we left off
 
 const orb = GuyaOrb.create(canvas, {
   box: BOX,
@@ -124,26 +112,31 @@ function setState(name, text) {
 
 /* ------------------------------------------------------------- capture ----- */
 
-/* Every chunk of sound the microphone produces, whether or not a recording is
- * running: the level meter, the silence detector and the voice clock all read the
- * same samples, and the samples themselves are kept only while capturing. */
-function onChunk(chunk) {
-  const rms = GuyaAudio.rms(chunk);
-  room.update(rms);
-  const speaking = rms > room.level();
+/* Everything a recording measures, reset at the start of it: the gate that decides
+ * what is speech, and the endpointer that decides when the recording is over. The
+ * room's quiet level is remembered between recordings — it is the same room — so the
+ * second recording of a session starts already knowing what the noise sounds like. */
+function beginMeasuring() {
+  gate = GuyaAudio.createVoiceGate({ initialFloor: lastRoomFloor });
+  endpointer = GuyaAudio.createEndpointer({ noSpeechMs: noSpeechStopMs, endSilenceMs: silenceStopMs });
+  lastGate = null;
+  chunks = [];
+  frameVoiced = [];
+  voiceMs = 0;
+}
 
-  if (capturing) {
-    /* How much of this recording was actually someone talking: the main process
-     * needs it to decide whether there is anything to transcribe at all. */
-    if (speaking) {
-      voiceMs += (chunk.length / (captureRate || 48000)) * 1000;
-      lastVoiceAt = performance.now();
-    } else if (silenceStopMs > 0 && performance.now() - lastVoiceAt > silenceStopMs) {
-      // Tell the main process first, so it is ready to transcribe the result.
-      api.overlayAutoStopped('end-of-speech');
-      stopCapture();
-    }
-    if (capturing) chunks.push(chunk);
+function onChunk(chunk) {
+  if (!capturing || !gate) return;
+  const frameMs = (chunk.length / (captureRate || GuyaAudio.TARGET_RATE)) * 1000;
+  const g = gate.push(GuyaAudio.rms(chunk), frameMs);
+  lastGate = g;
+  if (g.voiced) voiceMs += frameMs + g.creditMs; // creditMs repays the onset frames that were not yet flagged
+  chunks.push(chunk);
+  frameVoiced.push(g.voiced);
+  const reason = endpointer.push(g.voiced, frameMs);
+  if (reason) {
+    api.overlayAutoStopped(reason); // first: the main process must be ready for the audio that follows
+    stopCapture();
   }
 }
 
@@ -215,7 +208,10 @@ function abortCapture() {
   starting = false;
   pendingStop = false;
   chunks = [];
+  frameVoiced = [];
   voiceMs = 0;
+  gate = null;
+  endpointer = null;
   releaseMic();
   bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
   orb.setDriven(false);
@@ -300,9 +296,6 @@ async function startCapture() {
   const token = ++sessionToken;
   pendingStop = false;
   bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
-  chunks = [];
-  voiceMs = 0;
-  lastVoiceAt = performance.now();
   setState('starting', '');
 
   captureRate = 0;
@@ -310,6 +303,7 @@ async function startCapture() {
   starting = false;
   if (!opened || token !== sessionToken) return;
 
+  beginMeasuring();
   capturing = true;
   setState('listening', '');
   api.overlayReady();
@@ -331,8 +325,12 @@ async function stopCapture() {
   const samples = GuyaAudio.concatFloat32(chunks);
   const durationMs = Math.round((samples.length / rate) * 1000);
   const spokenMs = Math.round(voiceMs);
+  if (lastGate) lastRoomFloor = Math.min(0.02, Math.max(0.0005, lastGate.floor));
   chunks = [];
+  frameVoiced = [];
   voiceMs = 0;
+  gate = null;
+  endpointer = null;
   releaseMic();
 
   let wav;
@@ -353,6 +351,7 @@ api.onOverlayCommand((payload) => {
   if (!payload || typeof payload !== 'object') return;
   if (payload.type === 'start') {
     if (Number.isFinite(payload.silenceStopMs)) silenceStopMs = payload.silenceStopMs;
+    if (Number.isFinite(payload.noSpeechStopMs)) noSpeechStopMs = payload.noSpeechStopMs;
     startCapture();
   } else if (payload.type === 'stop') {
     stopCapture();

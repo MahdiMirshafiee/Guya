@@ -177,6 +177,13 @@
 
 /* --------------------------------------------------------------- button --- */
 
+/* A number the user types needs its unit next to it, or "4.5" is not a duration. */
+.unit {
+  flex: 0 0 auto;
+  font-size: var(--text-caption);
+  color: var(--text-3);
+}
+
 .icon-btn {
   flex: 0 0 auto;
   display: inline-flex;

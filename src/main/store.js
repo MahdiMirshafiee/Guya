@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
-const { DEFAULTS, SILENCE_CHOICES, ATTEMPT_CHOICES } = require('../shared/defaults');
+const { DEFAULTS, ATTEMPT_CHOICES } = require('../shared/defaults');
 const { LANGUAGES: SPOKEN_LANGUAGES, LEGACY_PROMPTS } = require('../shared/i18n');
 const { DEFAULT_PROMPT, PROMPT_REVISION } = require('../shared/prompt');
 
@@ -21,6 +21,16 @@ const LANGUAGE_CODES = SPOKEN_LANGUAGES.map((l) => l.code);
 
 let cache = null;
 
+/* A duration the user typed, in milliseconds: 0 is off, anything else is rounded to
+ * a tenth of a second and kept inside what the form can express. A closed list of
+ * choices is what the picker offers, not what the file may contain — someone who
+ * wants 4.5 seconds should get 4.5 seconds. */
+function sanitizeDuration(value, fallback) {
+  if (value === 0) return 0; // 0 = off
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(120000, Math.max(1000, Math.round(value / 100) * 100));
+}
+
 /* `fallback` supplies values for fields that are missing or unusable, so a bad
  * value from the UI can never wipe a working setting. */
 function sanitize(raw, fallback) {
@@ -35,7 +45,8 @@ function sanitize(raw, fallback) {
   if (typeof raw.promptRevision === 'number') out.promptRevision = raw.promptRevision;
   if (raw.uiLanguage === 'fa' || raw.uiLanguage === 'en') out.uiLanguage = raw.uiLanguage;
   if (typeof raw.shortcut === 'string' && /^[A-Za-z0-9+]+$/.test(raw.shortcut)) out.shortcut = raw.shortcut;
-  if (SILENCE_CHOICES.indexOf(raw.silenceStopMs) !== -1) out.silenceStopMs = raw.silenceStopMs;
+  if (raw.silenceStopMs !== undefined) out.silenceStopMs = sanitizeDuration(raw.silenceStopMs, out.silenceStopMs);
+  if (raw.noSpeechStopMs !== undefined) out.noSpeechStopMs = sanitizeDuration(raw.noSpeechStopMs, out.noSpeechStopMs);
   if (ATTEMPT_CHOICES.indexOf(raw.attempts) !== -1) out.attempts = raw.attempts;
   if (typeof raw.copyToClipboard === 'boolean') out.copyToClipboard = raw.copyToClipboard;
   if (typeof raw.pasteAfterTranscribe === 'boolean') out.pasteAfterTranscribe = raw.pasteAfterTranscribe;
