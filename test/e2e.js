@@ -393,9 +393,14 @@ class Cdp {
     notice: !document.getElementById('pasteNotice').hidden,
     offersPane: !!document.getElementById('openAccessibility')
   })`);
-  console.log('  accessibility granted:', permission.granted, '| paste toggle:', paste.toggle, '| notice:', paste.notice);
-  check('the setting cannot stay on without the permission', permission.granted ? paste.toggle === true : paste.toggle === false, paste);
-  if (!permission.granted) check('the refusal offers the system pane', paste.notice && paste.offersPane, paste);
+  /* Read the permission again rather than trusting the earlier reading: the switch
+   * asks macOS for it, and the answer can change while this is running — which is
+   * exactly when the old reading turned this into a flake. What is being asserted
+   * is that the switch agrees with the current answer, not with an old one. */
+  const afterAttempt = await panel.eval('guya.accessibilityStatus()');
+  console.log('  accessibility granted:', afterAttempt.granted, '| paste toggle:', paste.toggle, '| notice:', paste.notice);
+  check('the setting follows the permission', afterAttempt.granted ? paste.toggle === true : paste.toggle === false, paste);
+  if (!afterAttempt.granted) check('the refusal offers the system pane', paste.notice && paste.offersPane, paste);
   /* The interface language is a real switch, not a translation layer: in English
    * nothing Persian may survive anywhere on screen, tooltips and names included. */
   await panel.eval(`(() => { const s = document.getElementById('uiLanguageSelect'); s.value = 'en'; s.dispatchEvent(new Event('change')); return true; })()`);
