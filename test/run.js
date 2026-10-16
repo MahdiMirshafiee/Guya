@@ -179,6 +179,36 @@ test('wavFromFloat32 keeps amplitude', () => {
   assert.ok(peak === 16383 || peak === 16384, `0.5 amplitude should map to 0.5 * 32767, got ${peak}`);
 });
 
+test('the silence around the speech is not uploaded', () => {
+  const rate = 16000;
+  const frame = new Float32Array(rate / 50); // 20 ms
+  const chunks = [];
+  const voiced = [];
+  for (let i = 0; i < 50; i++) { // one second
+    chunks.push(frame);
+    voiced.push(i >= 10 && i < 20); // speech in the middle: 200 ms at 20% into the recording
+  }
+
+  const trimmed = GuyaAudio.trimToSpeech(chunks, voiced, rate, 450, 450);
+  /* 200 ms of speech, 450 ms of air on each side: 1100 ms, clipped to the second
+   * that was recorded. What matters is that no word is near an edge. */
+  assert.ok(trimmed.trimmedMs >= 200 + 450, 'the speech and its margin are kept: ' + trimmed.trimmedMs);
+  assert.ok(trimmed.trimmedMs <= 1000, 'and nothing is invented: ' + trimmed.trimmedMs);
+
+  const sparse = [];
+  const sparseVoiced = [];
+  for (let i = 0; i < 250; i++) { // five seconds
+    sparse.push(frame);
+    sparseVoiced.push(i >= 100 && i < 110); // speech in the middle
+  }
+  const cut = GuyaAudio.trimToSpeech(sparse, sparseVoiced, rate, 450, 450);
+  assert.ok(cut.trimmedMs < 1500, 'the five seconds become about one: ' + cut.trimmedMs + 'ms');
+  assert.ok(cut.trimmedMs > 900, 'with the speech and its margins kept: ' + cut.trimmedMs + 'ms');
+
+  const silent = GuyaAudio.trimToSpeech(sparse, sparse.map(() => false), rate, 450, 450);
+  assert.strictEqual(silent.samples.length, 0, 'and a recording with no speech uploads nothing at all');
+});
+
 test('the gate opens between a room and a voice', () => {
   /* Measured on this machine over eight seconds of each, with the platform's gain
    * doing its work: a quiet room means 0.0024 RMS with a 90th percentile of 0.0052,

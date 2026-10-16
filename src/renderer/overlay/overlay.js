@@ -321,9 +321,11 @@ async function stopCapture() {
   pendingStop = false;
   setState('processing', '');
 
-  const rate = captureRate || 48000;
-  const samples = GuyaAudio.concatFloat32(chunks);
-  const durationMs = Math.round((samples.length / rate) * 1000);
+  const rate = captureRate || GuyaAudio.TARGET_RATE;
+  let samples = 0;
+  for (let i = 0; i < chunks.length; i++) samples += chunks[i].length;
+  const durationMs = Math.round((samples / rate) * 1000); // what the timer shows
+  const trimmed = GuyaAudio.trimToSpeech(chunks, frameVoiced, rate, 450, 450); // what is uploaded
   const spokenMs = Math.round(voiceMs);
   if (lastGate) lastRoomFloor = Math.min(0.02, Math.max(0.0005, lastGate.floor));
   chunks = [];
@@ -335,14 +337,15 @@ async function stopCapture() {
 
   let wav;
   try {
-    wav = GuyaAudio.wavFromFloat32(samples, rate);
+    wav = trimmed.samples.length ? GuyaAudio.wavFromFloat32(trimmed.samples, rate) : new Uint8Array(0);
   } catch (err) {
     return reportFailure('error.micFailed');
   }
 
   /* How much of it was speech travels with the audio: a recording of a quiet room
-   * is not something to ask a model about. */
-  api.overlayResult(wav, durationMs, spokenMs);
+   * is not something to ask a model about. So does how much of it is being sent,
+   * which is the trimmed length rather than the length the timer counted. */
+  api.overlayResult(wav, durationMs, spokenMs, trimmed.trimmedMs);
 }
 
 /* -------------------------------------------------------------- commands --- */

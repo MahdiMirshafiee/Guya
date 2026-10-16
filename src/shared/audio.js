@@ -204,6 +204,25 @@
     });
   }
 
+  /* --------------------------------------------------------------- trim --- */
+
+  /* Keeps the speech and a little air around it: the silence before the first word
+   * and after the last one is uploaded too, and on a slow connection it is the most
+   * expensive part of the recording. The padding is deliberate — the gate flags
+   * speech only after a 100 ms onset and keeps a 400 ms hang-over, so the edges of
+   * the words the gate knows about are already inside these margins.
+   * `voiced` has one flag per chunk. */
+  function trimToSpeech(chunks, voiced, rate, padBeforeMs, padAfterMs) {
+    var first = -1, last = -1;
+    for (var i = 0; i < voiced.length; i++) if (voiced[i]) { if (first < 0) first = i; last = i; }
+    if (first < 0) return { samples: new Float32Array(0), trimmedMs: 0 };
+    var frameMs = (chunks[0].length / rate) * 1000;
+    var from = Math.max(0, first - Math.ceil(padBeforeMs / frameMs));
+    var to = Math.min(chunks.length - 1, last + Math.ceil(padAfterMs / frameMs));
+    var samples = concatFloat32(chunks.slice(from, to + 1));
+    return { samples: samples, trimmedMs: Math.round((samples.length / rate) * 1000) };
+  }
+
   /* --------------------------------------------------------- voice gate --- */
 
   /* Two jobs that used to be one measurement, done properly.
@@ -287,6 +306,7 @@
     wavFromFloat32: wavFromFloat32,
     rms: rms,
     durationSeconds: durationSeconds,
+    trimToSpeech: trimToSpeech,
     createVoiceGate: createVoiceGate,
     createEndpointer: createEndpointer,
     bandEdges: bandEdges,
