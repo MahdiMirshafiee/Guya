@@ -35,11 +35,14 @@ const R = {
  * band rises quickly and falls slowly, the way a level meter does, so speech reads
  * as movement instead of flicker. At rest the bars sit at a visible baseline
  * rather than collapsing to a hairline. */
-const WAVE_BARS = 48;
+const WAVE_BARS = 48; // one per spectrum band, as the overlay sends them
 const WAVE_SPACING = 3;
 const WAVE_MIN_HEIGHT = 4;
-const WAVE_ATTACK = 0.6;
-const WAVE_RELEASE = 0.18;
+/* The data arrives at about 30 Hz already smoothed by the overlay's meters, so the
+ * panel only has to take the edge off. WAVE_BARS is the overlay's own band count:
+ * one bar per band, in band order. */
+const WAVE_ATTACK = 0.7;
+const WAVE_RELEASE = 0.25;
 let bands = new Array(WAVE_BARS).fill(0);
 let bars = new Array(WAVE_BARS).fill(0);
 let waveDpr = 1;
@@ -72,14 +75,22 @@ function animateWaveform() {
   });
 }
 
+/* Read once per phase change rather than once per frame: getComputedStyle forces a
+ * style recalculation, and this is drawn thirty times a second. */
+let waveTint = '#000';
+
+function readWaveTint() {
+  const css = getComputedStyle(document.body);
+  const active = appState.phase === 'recording' || appState.phase === 'starting';
+  waveTint = (active ? css.getPropertyValue('--text') : css.getPropertyValue('--text-3')).trim() || '#000';
+}
+
 function drawWaveform() {
   const ctx = R.waveform.getContext('2d');
   if (!ctx) return;
   const cssWidth = R.waveform.width / waveDpr;
   const cssHeight = R.waveform.height / waveDpr;
-  const css = getComputedStyle(document.body);
-  const active = appState.phase === 'recording' || appState.phase === 'starting';
-  const tint = (active ? css.getPropertyValue('--text') : css.getPropertyValue('--text-3')).trim() || '#000';
+  const tint = waveTint;
 
   ctx.setTransform(waveDpr, 0, 0, waveDpr, 0, 0);
   ctx.clearRect(0, 0, cssWidth, cssHeight);
@@ -182,7 +193,15 @@ function statusCopy() {
 /* The transcript is content, and content carries its own direction: one block
  * per paragraph, each laid out the way its own language is read. The browser's
  * bidi algorithm then places any foreign word inside that paragraph correctly. */
+let renderedTranscript = null;
+
 function renderTranscript(text) {
+  /* A state push arrives for the timer, the level, the retry note — and every one of
+   * them used to rebuild these paragraphs, which throws away the user's selection
+   * while they are reading. Nothing to do is nothing to do. */
+  if (text === renderedTranscript) return;
+  renderedTranscript = text;
+
   R.transcript.textContent = '';
   GuyaBidi.blocksOf(text).forEach((line) => {
     const paragraph = document.createElement('p');
@@ -194,6 +213,7 @@ function renderTranscript(text) {
 
 function renderRecorder() {
   const phase = appState.phase || 'idle';
+  readWaveTint();
   document.body.dataset.phase = phase;
   const text = appState.lastTranscript || '';
   document.body.dataset.transcript = text ? 'true' : 'false';
@@ -238,6 +258,7 @@ function applyI18n() {
   R.closeSettings.setAttribute('aria-label', t('ui.back'));
   R.copyTranscript.setAttribute('aria-label', t('ui.copyTranscript'));
 
+  renderedTranscript = null; // the direction of each paragraph follows the language
   renderRecorder();
   if (window.__repaintSettings) window.__repaintSettings();
 }
@@ -325,6 +346,11 @@ document.addEventListener('keydown', (event) => {
   if (!escape && !back) return;
   event.preventDefault();
   goBack();
+});
+
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  readWaveTint();
+  drawWaveform();
 });
 
 window.addEventListener('resize', () => {

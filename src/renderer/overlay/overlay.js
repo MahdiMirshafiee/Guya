@@ -41,8 +41,16 @@ let sourceNode = null;
 let captureNode = null;
 let sinkNode = null;
 let analyser = null;
-let spectrumBins = null;
 let graphReady = null;
+const meter = GuyaAudio.createLevelMeter();
+const bandNormalizer = GuyaAudio.createBandNormalizer(SPECTRUM_BANDS);
+const levels = new Array(SPECTRUM_BANDS).fill(0);
+let timeBuf = null;
+let freqBuf = null;
+let pumpTimer = null;
+let lastPumpAt = 0;
+let lastSentAt = 0;
+let voiceLevel = 0;
 let chunks = [];
 let captureRate = 0;
 let capturing = false;
@@ -50,7 +58,6 @@ let starting = false;
 let pendingStop = false;
 let sessionToken = 0;
 let bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
-let levelTickAt = 0;
 let silenceStopMs = DEFAULT_SILENCE_STOP_MS; // after the user has spoken
 let noSpeechStopMs = DEFAULT_NO_SPEECH_STOP_MS; // nobody has spoken yet
 let voiceMs = 0;
@@ -65,34 +72,52 @@ const orb = GuyaOrb.create(canvas, {
   sphere: ORB_R,
   palette: 'live',
   onFrame: () => {
-    if (stage.dataset.state === 'listening') {
-      const levels = readSpectrum();
-      /* Twenty times a second is enough for the eye and keeps the channel quiet;
-       * the orb itself is redrawn every frame from the same numbers. */
-      const at = performance.now();
-      if (levels && at - levelTickAt > 50) {
-        levelTickAt = at;
-        api.sendSpectrum(levels);
-      }
-    }
     orb.setLevels(bands);
+    orb.setLevel(voiceLevel);
   }
 });
 
 /* ------------------------------------------------------------ level loop -- */
 
-function readSpectrum() {
-  if (!analyser || !spectrumBins) return;
-  const rate = captureRate || 48000;
-  analyser.getByteFrequencyData(spectrumBins);
-  const levels = GuyaAudio.spectrum(spectrumBins, rate, SPECTRUM_BANDS);
-  const clouds = GuyaAudio.foldBands(levels, rate, CLOUD_HZ);
-  for (let i = 0; i < bands.length; i++) {
-    const target = Math.max(GuyaOrb.REST, clouds[i]);
-    const previous = bands[i];
-    bands[i] = target > previous ? previous + (target - previous) * 0.55 : previous + (target - previous) * 0.14;
+/* The measurement runs on a timer, not on a frame: a hidden window has its frames
+ * paused, and the panel's meter would freeze with it while the orb kept listening.
+ * Everything the orb and the panel show comes from here. */
+function pump() {
+  if (!analyser || !capturing) return;
+  if (!timeBuf) {
+    timeBuf = new Float32Array(analyser.fftSize);
+    freqBuf = new Float32Array(analyser.frequencyBinCount);
   }
-  return levels;
+  const now = performance.now();
+  const dt = Math.min(100, now - lastPumpAt || 16);
+  lastPumpAt = now;
+
+  analyser.getFloatTimeDomainData(timeBuf);
+  voiceLevel = meter.push(GuyaAudio.rms(timeBuf), lastGate ? lastGate.floor : lastRoomFloor, dt);
+
+  analyser.getFloatFrequencyData(freqBuf);
+  bandNormalizer(GuyaAudio.spectrumDb(freqBuf, audioCtx.sampleRate, SPECTRUM_BANDS), dt, levels);
+  const clouds = GuyaAudio.foldBands(levels, audioCtx.sampleRate, CLOUD_HZ);
+  for (let i = 0; i < bands.length; i++) bands[i] = Math.max(GuyaOrb.REST, clouds[i]);
+
+  if (now - lastSentAt >= 33) { // ~30 Hz to the panel, from a timer, so a hidden overlay still feeds it
+    lastSentAt = now;
+    api.sendSpectrum(levels);
+  }
+}
+
+function startPump() {
+  stopPump();
+  lastPumpAt = performance.now();
+  pumpTimer = setInterval(pump, 16);
+}
+
+function stopPump() {
+  if (pumpTimer) clearInterval(pumpTimer);
+  pumpTimer = null;
+  levels.fill(0);
+  voiceLevel = 0;
+  meter.reset();
 }
 
 function setState(name, text) {
@@ -207,6 +232,7 @@ function abortCapture() {
   capturing = false;
   starting = false;
   pendingStop = false;
+  stopPump();
   chunks = [];
   frameVoiced = [];
   voiceMs = 0;
@@ -250,9 +276,8 @@ function prepareGraph() {
     sinkNode.connect(audioCtx.destination);
 
     analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.65;
-    spectrumBins = new Uint8Array(analyser.frequencyBinCount);
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0; // the meters do their own smoothing, and know how much time passed
     analyser.connect(sinkNode);
   })().catch((err) => {
     console.warn('[guya] could not prepare the audio graph:', err && err.message);
@@ -275,13 +300,13 @@ function releaseMic() {
   /* Nothing is being recorded: holding the output device open keeps the CPU awake
    * for nothing. The graph is rebuilt by prepareGraph() when it is needed again. */
   if (audioCtx && audioCtx.state === 'running') audioCtx.suspend().catch(() => {});
-  if (spectrumBins) spectrumBins.fill(0);
 }
 
 async function reportFailure(err) {
   capturing = false;
   starting = false;
   pendingStop = false;
+  stopPump();
   sessionToken++; // any openMic() still in flight is nobody's now
   releaseMic();
   bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
@@ -305,6 +330,7 @@ async function startCapture() {
 
   beginMeasuring();
   capturing = true;
+  startPump();
   setState('listening', '');
   api.overlayReady();
 
@@ -327,6 +353,7 @@ async function stopCapture() {
   const durationMs = Math.round((samples / rate) * 1000); // what the timer shows
   const trimmed = GuyaAudio.trimToSpeech(chunks, frameVoiced, rate, 450, 450); // what is uploaded
   const spokenMs = Math.round(voiceMs);
+  stopPump();
   if (lastGate) lastRoomFloor = Math.min(0.02, Math.max(0.0005, lastGate.floor));
   chunks = [];
   frameVoiced = [];

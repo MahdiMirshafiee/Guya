@@ -15,6 +15,12 @@
   const TAU = Math.PI * 2;
   const REST = 0.18; // resting energy, so the orb never looks dead
 
+  /* What drives the size and the aura is the voice envelope the caller measures
+   * against the room, not a band of the spectrum: a bass band moves when a lorry
+   * goes past, and the orb is supposed to be the user's voice. The four bands colour
+   * the clouds. */
+  let level = 0;
+
   /* One colour cloud per band: orbit radius (fraction of the sphere radius),
    * angular speed (rad/ms), start phase and size. */
   const CLOUDS = [
@@ -80,14 +86,10 @@
         for (let c = 0; c < 3; c++) palette[i][c] += (target[i][c] - palette[i][c]) * step;
       }
 
-      const energy = driven ? bands[0] * 0.4 + bands[1] * 0.25 + bands[2] * 0.2 + bands[3] * 0.15 : REST;
-      const bass = driven ? bands[0] : REST;
       const idleFlow = Math.sin(now / 1500);
-      const auraSpread = driven
-        ? 1.3 + (auraMax - 1.3) * Math.max(energy, bass * 0.9)
-        : 1.36 + 0.05 * idleFlow;
-      const auraAlpha = driven ? 0.26 + 0.42 * energy : 0.3 + 0.07 * idleFlow;
-      const scale = driven ? 1 + 0.075 * bass + 0.03 * energy : 1 + 0.016 * idleFlow;
+      const auraSpread = driven ? 1.3 + (auraMax - 1.3) * level : 1.36 + 0.05 * idleFlow;
+      const auraAlpha = driven ? 0.26 + 0.42 * level : 0.3 + 0.07 * idleFlow;
+      const scale = driven ? 1 + 0.11 * level : 1 + 0.016 * idleFlow;
 
       ctx.clearRect(0, 0, size, size);
       ctx.save();
@@ -189,6 +191,7 @@
     function tick(now) {
       if (!driven) {
         for (let i = 0; i < bands.length; i++) bands[i] += (REST - bands[i]) * 0.06;
+        level += (0 - level) * 0.08;
       }
       if (typeof config.onFrame === 'function') config.onFrame(now || performance.now());
       draw(now || performance.now());
@@ -203,6 +206,7 @@
       setPalette(name) {
         if (PALETTES[name]) paletteName = name;
       },
+          setLevel(v) { level = Math.max(0, Math.min(1, v)); },
       setLevels(next) {
         if (Array.isArray(next) && next.length === bands.length) bands = next.slice();
       },

@@ -143,45 +143,43 @@
   /* ------------------------------------------------------------- spectrum --- */
 
   /* The meter is a spectrum, not a history of loudness: each bar is one frequency
-   * band, so a voice at 1 kHz moves the bars around 1 kHz and leaves the rest
-   * alone. Bands are spaced logarithmically — an octave takes the same room on
-   * screen as the octave below it — over the range speech occupies.
+   * band, so a voice at 1 kHz moves the bars around 1 kHz and leaves the rest alone.
    *
-   * `bins` is what AnalyserNode.getByteFrequencyData gives (0-255 per bin) and
-   * `sampleRate` is the context's rate; the result is 0-1 per band, shaped so
-   * quiet speech still shows. */
-  var SPECTRUM_LOW_HZ = 60;
+   * Mel spacing rather than log: an octave is not what the ear counts. With 48 bars
+   * over 80 Hz to the top of the range, the lowest band is about three bins wide at a
+   * 16 kHz context, so the bars at the bottom are real measurements rather than the
+   * same bin drawn twice. */
+  var SPECTRUM_LOW_HZ = 80;
   var SPECTRUM_HIGH_HZ = 16000;
+
+  function hzToMel(f) { return 2595 * Math.log10(1 + f / 700); }
+  function melToHz(m) { return 700 * (Math.pow(10, m / 2595) - 1); }
 
   function bandEdges(sampleRate, bandCount, lowHz, highHz) {
     var low = Math.max(1, lowHz || SPECTRUM_LOW_HZ);
-    var high = Math.min(sampleRate / 2, highHz || SPECTRUM_HIGH_HZ);
-    var edges = [];
-    for (var i = 0; i < bandCount; i++) edges.push(low * Math.pow(high / low, i / bandCount));
-    edges.push(high);
+    var high = Math.min((sampleRate / 2) * 0.95, highHz || SPECTRUM_HIGH_HZ);
+    var m0 = hzToMel(low), m1 = hzToMel(high), edges = [];
+    for (var i = 0; i <= bandCount; i++) edges.push(melToHz(m0 + (m1 - m0) * (i / bandCount)));
     return edges;
   }
 
-  function spectrum(bins, sampleRate, bandCount, lowHz, highHz) {
+  /* freqDb: what AnalyserNode.getFloatFrequencyData gives, in dB. The result is the
+   * mean power of each band, also in dB.
+   *
+   * The bins are partitioned, not overlapped: a band owns the bins from the one at or
+   * above its lower edge to the one before its upper edge. Taking the bin that
+   * contains the edge for both neighbours makes a pure tone light two bars equally,
+   * and the meter then shows a peak that moves between them. Near the bottom two
+   * edges fall inside the same bin, so a band keeps at least one. */
+  function spectrumDb(freqDb, sampleRate, bandCount, lowHz, highHz) {
     var edges = bandEdges(sampleRate, bandCount, lowHz, highHz);
-    var binCount = bins.length;
-    var perBin = sampleRate / 2 / (binCount || 1);
-    var out = new Array(bandCount);
+    var n = freqDb.length, perBin = sampleRate / 2 / n, out = new Array(bandCount);
     for (var b = 0; b < bandCount; b++) {
-      /* Bins are partitioned, not overlapped: a band owns the bins at or after its
-       * lower edge and before its upper one, so a pure tone lights one bar instead
-       * of two. Near the bottom two edges fall inside the same bin, and a band over
-       * an empty range would sit dead forever, so each band keeps at least one. */
-      var from = Math.max(0, Math.min(binCount - 1, Math.ceil(edges[b] / perBin)));
-      var to = Math.max(from, Math.min(binCount - 1, Math.ceil(edges[b + 1] / perBin) - 1));
-      var sum = 0;
-      var count = 0;
-      for (var bin = from; bin <= to; bin++) {
-        sum += bins[bin];
-        count++;
-      }
-      var average = count ? sum / count / 255 : 0;
-      out[b] = Math.min(1, Math.pow(average, 0.62) * 1.25);
+      var from = Math.max(0, Math.min(n - 1, Math.ceil(edges[b] / perBin)));
+      var to = Math.max(from, Math.min(n - 1, Math.ceil(edges[b + 1] / perBin) - 1));
+      var power = 0;
+      for (var i = from; i <= to; i++) power += Math.pow(10, Math.max(-120, freqDb[i]) / 10);
+      out[b] = 10 * Math.log10(power / (to - from + 1) + 1e-12);
     }
     return out;
   }
@@ -202,6 +200,66 @@
       for (var i = from; i < to; i++) if (levels[i] > best) best = levels[i];
       return best;
     });
+  }
+
+  /* ------------------------------------------------------------- meters --- */
+
+  /* The meter and the orb both need "how loud is this, compared to the room?", and
+   * both used to get a copy of the analyser's byte data raised to a power. Bytes are
+   * decibels already, with limits of -100 and -30 dB fixed by the browser, so the
+   * same face was 40% of the meter in a quiet room and 90% in a noisy one, and there
+   * was no way to tell a fan from a voice.
+   *
+   * These work in decibels relative to what the gate measured, normalised against a
+   * peak that falls slowly: a bar is loud when it is loud *for this room*, and noise
+   * sits at zero instead of halfway up. Attack and release are time constants, so the
+   * response does not depend on the frame rate. */
+  function createLevelMeter(options) {
+    var o = { attackMs: 25, releaseMs: 220, minSpanDb: 14, ceilFallDbPerSec: 4, gamma: 0.85, aboveFloor: 1.8 };
+    if (options) for (var k in options) o[k] = options[k];
+    var envelope = 0, ceilDb = -35;
+    return {
+      /* rms: this frame's level; floorRms: the gate's room estimate; dtMs: time since
+       * the last call. Returns 0..1. */
+      push: function (rms, floorRms, dtMs) {
+        var db = 20 * Math.log10(Math.max(rms, 1e-5));
+        var lowDb = 20 * Math.log10(Math.max(floorRms * o.aboveFloor, 1e-4));
+        ceilDb = db > ceilDb ? db : Math.max(ceilDb - (o.ceilFallDbPerSec * dtMs) / 1000, lowDb + o.minSpanDb);
+        var x = Math.max(0, Math.min(1, (db - lowDb) / Math.max(1, ceilDb - lowDb)));
+        x = Math.pow(x, o.gamma);
+        var tau = x > envelope ? o.attackMs : o.releaseMs;
+        envelope += (x - envelope) * (1 - Math.exp(-dtMs / tau));
+        return envelope;
+      },
+      reset: function () { envelope = 0; ceilDb = -35; }
+    };
+  }
+
+  /* The same idea for every bar of the spectrum: each band keeps its own smoothed
+   * level, its own floor and its own falling ceiling, so a band moves when there is
+   * energy in it *for that band* — which is what makes the row read as a spectrum
+   * instead of a shape that follows the loudness. */
+  function createBandNormalizer(count, options) {
+    var o = { floorRiseDbPerSec: 2.5, ceilFallDbPerSec: 5, minSpanDb: 14, marginDb: 6, gamma: 0.8, attackMs: 30, releaseMs: 200, smoothMs: 60 };
+    if (options) for (var k in options) o[k] = options[k];
+    var smooth = new Array(count), floor = new Array(count), ceil = new Array(count), env = new Array(count), ready = false;
+    return function normalize(dbBands, dtMs, out) {
+      var dt = dtMs / 1000, a = 1 - Math.exp(-dtMs / o.smoothMs);
+      for (var b = 0; b < count; b++) {
+        var db = dbBands[b];
+        if (!ready) { smooth[b] = db; floor[b] = db; ceil[b] = db + o.minSpanDb + o.marginDb; env[b] = 0; }
+        smooth[b] += (db - smooth[b]) * a;
+        var s = smooth[b];
+        floor[b] = s < floor[b] ? s : Math.min(s, floor[b] + o.floorRiseDbPerSec * dt);
+        ceil[b] = s > ceil[b] ? s : Math.max(floor[b] + o.marginDb + o.minSpanDb, ceil[b] - o.ceilFallDbPerSec * dt);
+        var x = (s - floor[b] - o.marginDb) / Math.max(1, ceil[b] - floor[b] - o.marginDb);
+        x = Math.pow(Math.max(0, Math.min(1, x)), o.gamma);
+        env[b] += (x - env[b]) * (1 - Math.exp(-dtMs / (x > env[b] ? o.attackMs : o.releaseMs)));
+        out[b] = env[b];
+      }
+      ready = true;
+      return out;
+    };
   }
 
   /* --------------------------------------------------------------- trim --- */
@@ -297,6 +355,8 @@
     MIC_CONSTRAINTS: MIC_CONSTRAINTS,
     SPECTRUM_LOW_HZ: SPECTRUM_LOW_HZ,
     SPECTRUM_HIGH_HZ: SPECTRUM_HIGH_HZ,
+    createLevelMeter: createLevelMeter,
+    createBandNormalizer: createBandNormalizer,
     floatToInt16: floatToInt16,
     concatFloat32: concatFloat32,
     highPass: highPass,
@@ -310,7 +370,7 @@
     createVoiceGate: createVoiceGate,
     createEndpointer: createEndpointer,
     bandEdges: bandEdges,
-    spectrum: spectrum,
+    spectrumDb: spectrumDb,
     foldBands: foldBands
   };
 });

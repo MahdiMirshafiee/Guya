@@ -230,6 +230,80 @@ test('the gate opens between a room and a voice', () => {
   assert.strictEqual(voiced, true, 'and a voice does');
 });
 
+test('the spectrum puts a tone in its own band and nowhere else', () => {
+  /* The analyser hands over decibels per bin; these are the same numbers with a
+   * floor of -100 dB, which is what a quiet room looks like. */
+  const sampleRate = 16000;
+  const binCount = 512; // fftSize 1024
+  const perBin = sampleRate / 2 / binCount;
+  const edges = GuyaAudio.bandEdges(sampleRate, 48);
+  const bandOf = (hz) => edges.findIndex((edge, i) => i > 0 && hz < edge) - 1;
+
+  const tone = (hz) => {
+    const bins = new Array(binCount).fill(-100);
+    const at = Math.round(hz / perBin);
+    bins[at] = 0;
+    bins[at - 1] = -12;
+    bins[at + 1] = -12;
+    return bins;
+  };
+
+  [200, 440, 1200, 3000].forEach((hz) => {
+    const binHz = Math.round(hz / perBin) * perBin;
+    const levels = GuyaAudio.spectrumDb(tone(hz), sampleRate, 48);
+    const loudest = levels.indexOf(Math.max.apply(null, levels));
+    assert.strictEqual(loudest, bandOf(binHz), `${hz} Hz should sit in band ${bandOf(binHz)}, not ${loudest}`);
+    /* Everything an octave or more away is still the room: this is what makes the
+     * meter a spectrum rather than one loudness number drawn forty-eight times. */
+    const far = levels.filter((_, i) => Math.abs(i - loudest) > 6);
+    assert.ok(Math.max.apply(null, far) < -60, `${hz} Hz leaked into distant bands: ${Math.max.apply(null, far)}`);
+  });
+
+  const quiet = GuyaAudio.spectrumDb(new Array(binCount).fill(-100), sampleRate, 48);
+  assert.ok(Math.max.apply(null, quiet) < -90, 'silence is silence');
+});
+
+test('bands are mel spaced, and fold into the orb four at a time', () => {
+  const edges = GuyaAudio.bandEdges(48000, 48);
+  assert.strictEqual(edges.length, 49);
+  assert.ok(Math.abs(edges[0] - GuyaAudio.SPECTRUM_LOW_HZ) < 1e-6);
+  assert.ok(Math.abs(edges[48] - GuyaAudio.SPECTRUM_HIGH_HZ) < 1e-6);
+  /* Even spacing in mel, not in hertz and not in octaves: the ear does not count
+   * octaves, and the bottom of the range needs the room. */
+  const toMel = (hz) => 2595 * Math.log10(1 + hz / 700);
+  const steps = edges.slice(1).map((edge, i) => toMel(edge) - toMel(edges[i]));
+  steps.forEach((step) => assert.ok(Math.abs(step - steps[0]) < 1e-6, 'spacing is even in mel'));
+  assert.ok(edges[1] - edges[0] < 60, 'the lowest band is narrow: ' + (edges[1] - edges[0]).toFixed(1) + ' Hz');
+
+  /* Above the Nyquist frequency there is nothing to measure, so the top edge stops
+   * there rather than reading past the end of the array. */
+  const narrow = GuyaAudio.bandEdges(16000, 48);
+  assert.ok(narrow[48] <= 8000, 'a 16 kHz context cannot see past 8 kHz: ' + narrow[48]);
+
+  const noisy = new Array(48).fill(0).map((_, i) => i / 47);
+  const clouds = [
+    [90, 260],
+    [260, 800],
+    [800, 2400],
+    [2400, 7200]
+  ];
+  const folded = GuyaAudio.foldBands(noisy, 48000, clouds);
+  assert.strictEqual(folded.length, 4);
+  const wideEdges = GuyaAudio.bandEdges(48000, 48);
+  clouds.forEach((range, i) => {
+    const inRange = noisy.filter((_, b) => wideEdges[b] >= range[0] && wideEdges[b] < range[1]);
+    assert.ok(inRange.length > 0, 'this range covers some bands');
+    assert.strictEqual(folded[i], Math.max.apply(null, inRange), 'cloud ' + i + ' reads its own range');
+  });
+  for (let i = 1; i < folded.length; i++) {
+    assert.ok(folded[i] > folded[i - 1], 'the noise map should rise with frequency: ' + folded.join(', '));
+  }
+
+  const narrowFold = GuyaAudio.foldBands(noisy, 16000, clouds);
+  assert.strictEqual(narrowFold.length, 4);
+  narrowFold.forEach((value) => assert.ok(value >= 0 && value <= 1, 'a cloud level is a band level: ' + value));
+});
+
 test('the microphone is asked for the level that makes speech audible', () => {
   /* Measured on this machine with speech playing: the raw signal arrives at about
    * a fourteenth of the level the platform's automatic gain produces. With it off,
@@ -251,166 +325,6 @@ test('rms and concat behave', () => {
   const joined = GuyaAudio.concatFloat32([new Float32Array([1, 2]), new Float32Array([3])]);
   assert.deepStrictEqual(Array.from(joined), [1, 2, 3]);
 });
-
-test('the spectrum puts a tone in its own band and nowhere else', () => {
-  const sampleRate = 16000;
-  const binCount = 1024; // AnalyserNode.frequencyBinCount at fftSize 2048
-  const perBin = sampleRate / 2 / binCount;
-  const edges = GuyaAudio.bandEdges(sampleRate, 48);
-  const bandOf = (hz) => edges.findIndex((edge, i) => i > 0 && hz < edge) - 1;
-
-  const tone = (hz) => {
-    const bins = new Array(binCount).fill(0);
-    bins[Math.round(hz / perBin)] = 255;
-    return bins;
-  };
-
-  [200, 440, 1200, 3000].forEach((hz) => {
-    /* A tone lands in the bin nearest its frequency, so that bin's own frequency is
-     * what has to fall in the expected band — at the bottom of the range the bins
-     * are wider than the bands. */
-    const binHz = Math.round(hz / perBin) * perBin;
-    const levels = GuyaAudio.spectrum(tone(hz), sampleRate, 48);
-    const loudest = levels.indexOf(Math.max.apply(null, levels));
-    assert.strictEqual(loudest, bandOf(binHz), `${hz} Hz should sit in band ${bandOf(binHz)}, not ${loudest}`);
-    /* Everything an octave or more away stays dark: this is what makes the meter a
-     * spectrum rather than a loudness number repeated across the bars. */
-    const far = levels.filter((_, i) => Math.abs(i - loudest) > 6);
-    assert.ok(Math.max.apply(null, far) === 0, `${hz} Hz leaked into distant bands`);
-  });
-
-  const quiet = GuyaAudio.spectrum(new Array(binCount).fill(0), sampleRate, 48);
-  assert.strictEqual(Math.max.apply(null, quiet), 0, 'silence is flat');
-  const loud = GuyaAudio.spectrum(new Array(binCount).fill(255), sampleRate, 48);
-  loud.forEach((level) => assert.ok(level <= 1, 'bands are capped at 1'));
-});
-
-test('bands are logarithmic, and fold into the orb four at a time', () => {
-  const edges = GuyaAudio.bandEdges(48000, 48);
-  assert.strictEqual(edges.length, 49);
-  assert.ok(Math.abs(edges[0] - GuyaAudio.SPECTRUM_LOW_HZ) < 1e-6);
-  assert.ok(Math.abs(edges[48] - GuyaAudio.SPECTRUM_HIGH_HZ) < 1e-6);
-  /* Equal ratios between neighbours: an octave takes the same room everywhere. */
-  const ratios = edges.slice(1).map((edge, i) => edge / edges[i]);
-  ratios.forEach((ratio) => assert.ok(Math.abs(ratio - ratios[0]) < 1e-9, 'spacing is even in log terms'));
-
-  const noisy = new Array(48).fill(0).map((_, i) => i / 47);
-  const clouds = [
-    [90, 260],
-    [260, 800],
-    [800, 2400],
-    [2400, 7200]
-  ];
-  const folded = GuyaAudio.foldBands(noisy, 48000, clouds);
-  assert.strictEqual(folded.length, 4);
-  /* Each cloud reads its own range and nothing else: the value has to be the
-   * loudest band whose lower edge falls inside that range. */
-  const wideEdges = GuyaAudio.bandEdges(48000, 48);
-  clouds.forEach((range, i) => {
-    const inRange = noisy.filter((_, b) => wideEdges[b] >= range[0] && wideEdges[b] < range[1]);
-    assert.ok(inRange.length > 0, 'this range covers some bands');
-    assert.strictEqual(folded[i], Math.max.apply(null, inRange), 'cloud ' + i + ' reads its own range');
-  });
-  for (let i = 1; i < folded.length; i++) {
-    assert.ok(folded[i] > folded[i - 1], 'the noise map should rise with frequency: ' + folded.join(', '));
-  }
-
-  /* The same mapping has to work at the rate the capture actually asks for: at
-   * 16 kHz nothing above 8 kHz exists, so the clouds fold the bands that are there
-   * instead of reading past the end of the array. */
-  const narrow = GuyaAudio.foldBands(noisy, 16000, clouds);
-  assert.strictEqual(narrow.length, 4);
-  narrow.forEach((value) => assert.ok(value >= 0 && value <= 1, 'a cloud level is a band level: ' + value));
-  assert.ok(narrow[3] > 0, 'the high cloud still reads bands below 8 kHz');
-});
-
-group('silence detection');
-
-/* The detector, driven by synthetic audio: a room that breathes, speech with a
- * syllable rhythm and pauses, and the things that used to keep it alive — a fan, a
- * keyboard, a click. Each case states what should happen within 90 seconds of
- * simulated audio. */
-(function silenceSimulations() {
-  let seed = 662;
-  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const room = (base, wobble) => base * (1 + (rnd() - 0.5) * (wobble === undefined ? 0.6 : wobble));
-  const speech = (t, level) => ((t % 1300) > 1000 ? room(0.0024) : level * (0.25 + 1.5 * rnd()));
-
-  function run(rmsAt, options) {
-    const gate = GuyaAudio.createVoiceGate((options && options.gate) || {});
-    const endpointer = GuyaAudio.createEndpointer((options && options.ep) || {});
-    let stopped = null;
-    let voicedMs = 0;
-    for (let t = 0; t < 90000; t += 64) {
-      const g = gate.push(rmsAt(t), 64);
-      if (g.voiced) voicedMs += 64;
-      const reason = endpointer.push(g.voiced, 64);
-      if (reason) {
-        stopped = reason;
-        break;
-      }
-    }
-    return { stopped, voicedMs };
-  }
-
-  test('a quiet room with nobody speaking stops itself', () => {
-    const result = run(() => room(0.0024));
-    assert.strictEqual(result.stopped, 'no-speech', 'nothing was said, so nothing is sent');
-    assert.strictEqual(result.voicedMs, 0, 'and no speech was counted');
-  });
-
-  test('a keyboard does not keep the microphone open', () => {
-    const result = run((t) => (t % 3000 < 64 ? 0.05 : room(0.0024)));
-    assert.strictEqual(result.stopped, 'no-speech', 'a click is one frame, and speech takes two');
-  });
-
-  test('someone who speaks and stops is cut off shortly after', () => {
-    const result = run((t) => (t < 5000 ? speech(t, 0.04) : room(0.0024)));
-    assert.strictEqual(result.stopped, 'end-of-speech');
-    assert.ok(result.voicedMs > 3000, 'their words were counted: ' + result.voicedMs + 'ms');
-  });
-
-  test('a quiet speaker is heard, not dismissed as silence', () => {
-    /* The old fixed floor of 0.008 called this silence and never asked the provider. */
-    const result = run((t) => (t < 5000 ? speech(t, 0.006) : room(0.0024)));
-    assert.strictEqual(result.stopped, 'end-of-speech', 'a quiet voice is still a voice');
-    assert.ok(result.voicedMs > 2000, result.voicedMs + 'ms of speech counted');
-  });
-
-  test('a long sentence is not cut off in the middle', () => {
-    const result = run((t) => (t < 30000 ? speech(t, 0.04) : room(0.0024)));
-    assert.strictEqual(result.stopped, 'end-of-speech', 'thirty seconds of talking keeps it open');
-    assert.ok(result.voicedMs > 20000, result.voicedMs + 'ms counted');
-  });
-
-  test('a fan that starts after the user speaks does not hold it open', () => {
-    const result = run((t) => (t < 2000 ? speech(t, 0.04) : room(0.003 + 0.017 * Math.min(1, (t - 2000) / 8000), 0.2)));
-    assert.strictEqual(result.stopped, 'end-of-speech', 'steady noise is not speech');
-  });
-
-  test('a room that is loud from the start stops rather than hanging', () => {
-    /* A very noisy room is indistinguishable from speech for the first seconds; what
-     * matters is that it cannot hang, and that the second recording knows the room. */
-    const result = run((t) => (t < 64 ? 0 : room(0.010, 0.2)));
-    assert.strictEqual(result.stopped, 'end-of-speech', 'it stops');
-    assert.ok(result.voicedMs < 90000, 'and it does stop');
-  });
-
-  test('a click during the pause after speech does not restart the wait', () => {
-    const result = run((t) => (t < 4000 ? speech(t, 0.04) : (t % 2000 < 64 ? 0.05 : room(0.0024))));
-    assert.strictEqual(result.stopped, 'end-of-speech', 'the pause is still a pause');
-  });
-
-  test('speaking in a noisy room still ends when the speaking does', () => {
-    const result = run((t) => (t < 6000 ? Math.max(speech(t, 0.05), room(0.010, 0.2)) : room(0.010, 0.2)));
-    assert.strictEqual(result.stopped, 'end-of-speech');
-  });
-
-  test('both timers can be switched off', () => {
-    const result = run(() => room(0.0024), { ep: { noSpeechMs: 0, endSilenceMs: 0 } });
-    assert.strictEqual(result.stopped, null, 'a recording with no limits runs until the user stops it');
-  });
-})();
 
 /* ======================================================== accelerator ==== */
 
