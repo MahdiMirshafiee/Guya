@@ -41,18 +41,19 @@ function applyShortcut(next) {
   return { ok: true };
 }
 
-/* Escape belongs to whatever app the user is in, except while they are speaking into this app
- * here — so it is grabbed on the way into a recording and released on the way out. */
+/* Escape belongs to whatever app the user is in, except while this app is doing
+ * something the user is waiting on — recording, opening the microphone, or waiting
+ * for the provider. While waiting there is no other way out. */
 onPhaseChange((phase) => {
-  const capturing = phase === 'recording' || phase === 'starting';
-  if (capturing === escapeRegistered) return;
-  escapeRegistered = capturing;
+  const holding = phase === 'recording' || phase === 'starting' || phase === 'transcribing';
+  if (holding === escapeRegistered) return;
+  escapeRegistered = holding;
   try {
-    if (capturing) globalShortcut.register(ESCAPE, () => recorder.onHotkey());
+    if (holding) globalShortcut.register(ESCAPE, () => recorder.onEscape());
     else globalShortcut.unregister(ESCAPE);
-    if (process.env.GUYA_DEBUG) console.log(`[guya] escape capture: ${capturing ? 'on' : 'off'}`);
+    if (process.env.GUYA_DEBUG) console.log(`[guya] escape capture: ${holding ? 'on' : 'off'}`);
   } catch (_) {
-    escapeRegistered = !capturing;
+    escapeRegistered = !holding;
     console.warn('[guya] could not grab the Escape key');
   }
 });

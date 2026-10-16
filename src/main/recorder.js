@@ -28,6 +28,41 @@ let startTimer = null; // the microphone never confirmed
 let maxTimer = null; // a recording that ran too long
 let watchdog = null; // a transcription that never answered
 let hideTimer = null; // the overlay saying goodbye
+let sessionId = 0; // bumped by every beginRecording(); a result belongs to exactly one session
+let transcription = null; // { controller } while a request is in flight
+let lastKeyAt = 0;
+const HOTKEY_DEBOUNCE_MS = 350;
+const WATCHDOG_MS = 120000; // above gemini's 90 s total budget, below "the user gave up"
+
+function armWatchdog() {
+  clearTimeout(watchdog);
+  watchdog = setTimeout(() => {
+    if (state.phase !== 'transcribing') return;
+    abortTranscription();
+    fail('error.timeout');
+  }, WATCHDOG_MS);
+}
+
+function abortTranscription() {
+  if (!transcription) return;
+  transcription.controller.abort();
+  transcription = null;
+}
+
+/* Ends whatever is happening, quietly: used by Escape while transcribing, by a second hotkey
+ * press while the microphone is still opening, and by the panel's cancel control. */
+function cancelSession() {
+  sessionId++;
+  clearTimers();
+  abortTranscription();
+  windows.sendToOverlay({ type: 'abort' });
+  state.retryNote = null;
+  if (state.phase === 'starting' || state.phase === 'recording' || state.phase === 'transcribing') {
+    setPhase('idle');
+    pushPanel();
+  }
+  windows.hideOverlay();
+}
 
 function clearTimers() {
   clearTimeout(startTimer);
@@ -62,6 +97,11 @@ function cancelHide() {
  */
 function fail(key, vars, options) {
   const config = options || {};
+  /* Whatever the session was doing stops here, microphone included: a failure that
+   * leaves the capture running is a failure that keeps the microphone open. */
+  sessionId++;
+  abortTranscription();
+  windows.sendToOverlay({ type: 'abort' });
   setPhase('error');
   state.lastErrorKey = key;
   state.lastErrorVars = vars || null;
@@ -96,6 +136,7 @@ async function startRecording() {
 
 /* Shared by the shortcut, the panel button and the wake-less menu. */
 function beginRecording() {
+  sessionId++;
   state.retryNote = '';
   state.overlayShown = true;
   state.lastErrorKey = '';
@@ -109,7 +150,8 @@ function beginRecording() {
 
   /* Start comes before the window: opening the microphone is the slow part, and
    * nothing should wait behind it. */
-  windows.sendToOverlay({ type: 'start', silenceStopMs: store.read().silenceStopMs });
+  const s = store.read();
+  windows.sendToOverlay({ type: 'start', silenceStopMs: s.silenceStopMs, noSpeechStopMs: s.noSpeechStopMs });
   if (state.overlayShown) windows.showOverlay();
   if (process.env.GUYA_DEBUG) {
     console.log(`[guya] overlay ${state.overlayShown ? 'shown' : 'suppressed'} (window in front: ${!state.overlayShown})`);
@@ -131,26 +173,31 @@ function stopRecording() {
   /* A long recording idles the preconnected socket out; the request is about to
    * need it again. */
   gemini.warm();
-  // The overlay always answers, but never hang the app if it cannot.
-  watchdog = setTimeout(() => {
-    if (state.phase === 'transcribing') fail('error.timeout');
-  }, 150000);
+  armWatchdog();
 }
 
 function onHotkey() {
-  if (state.phase === 'transcribing' || state.phase === 'starting') return;
-  if (state.phase === 'recording') stopRecording();
-  // startRecording is async; surface a failure in the UI instead of only in the
-  // console as an unhandled rejection.
-  else Promise.resolve(startRecording()).catch((err) => {
+  const now = Date.now();
+  if (now - lastKeyAt < HOTKEY_DEBOUNCE_MS) return;
+  lastKeyAt = now;
+  if (state.phase === 'transcribing') return; // Escape (or the panel) cancels this, the hotkey does not
+  if (state.phase === 'starting') return cancelSession(); // a second press while the mic opens means "never mind"
+  if (state.phase === 'recording') return stopRecording();
+  Promise.resolve(startRecording()).catch((err) => {
     console.warn('[guya] could not start recording:', err && err.stack ? err.stack : err);
     fail('error.unexpected');
   });
 }
 
-async function handleAudioResult(wav, durationMs, voiceMs) {
-  if (state.phase !== 'transcribing') return { ok: false };
+/* Escape keeps its documented meaning while recording (stop and transcribe) and gains one while waiting: cancel. */
+function onEscape() {
+  if (state.phase === 'recording') return stopRecording();
+  if (state.phase === 'starting' || state.phase === 'transcribing') cancelSession();
+}
 
+async function handleAudioResult(wav, durationMs, voiceMs, trimmedMs) {
+  if (state.phase !== 'transcribing') return { ok: false };
+  const mine = sessionId;
   const settings = store.read();
   const seconds = durationMs > 0 ? durationMs / 1000 : 0;
   if (seconds < MIN_AUDIO_SECONDS) return fail('error.tooShort');
@@ -161,24 +208,36 @@ async function handleAudioResult(wav, durationMs, voiceMs) {
    * overlay measures how much of the recording was above the room's own level, and
    * below these two thresholds there is nothing to transcribe. Silence is a result,
    * not a failure to hide. */
+  const sent = Number.isFinite(trimmedMs) && trimmedMs > 0 ? trimmedMs : durationMs; // what is actually uploaded
   const spoken = Number.isFinite(voiceMs) ? voiceMs : durationMs;
-  const ratio = durationMs > 0 ? spoken / durationMs : 1;
+  const ratio = sent > 0 ? spoken / sent : 1;
   if (process.env.GUYA_DEBUG) {
-    console.log(`[guya] recording: ${Math.round(durationMs)}ms, ${Math.round(spoken)}ms above the room (${Math.round(ratio * 100)}%)`);
+    console.log(`[guya] recording: ${Math.round(durationMs)}ms, ${Math.round(spoken)}ms above the room (${Math.round(ratio * 100)}%), uploading ${Math.round(sent)}ms`);
   }
   if (spoken < MIN_VOICE_MS || ratio < MIN_SPEECH_RATIO) return fail('error.noSpeech');
 
+  const controller = new AbortController();
+  transcription = { controller };
   const result = await gemini.transcribe({
     apiKey: settings.apiKey,
     model: settings.model,
     wav,
     settings,
-    seconds,
+    seconds: sent / 1000,
+    signal: controller.signal,
     onAttempt: (attempt, total) => {
-      state.retryNote = { attempt, total };
-      pushPanel();
+      if (sessionId === mine) {
+        state.retryNote = { attempt, total };
+        pushPanel();
+      }
     }
   });
+  if (transcription && transcription.controller === controller) transcription = null;
+
+  /* Cancelled, timed out by the watchdog, or superseded by a newer recording: the
+   * answer is nobody's any more, and it must not reach the clipboard or the app the
+   * user is typing in. */
+  if (result.cancelled || sessionId !== mine || state.phase !== 'transcribing') return { ok: false };
   state.retryNote = null;
 
   if (!result.ok) return fail(result.errorKey || 'error.unexpected', result.errorVars);
@@ -225,17 +284,20 @@ function confirmStarted() {
   state.startedAt = Date.now();
   state.lastErrorKey = '';
   pushPanel();
+  clearTimeout(maxTimer);
   maxTimer = setTimeout(() => stopRecording(), MAX_RECORDING_MS);
   return { ok: true };
 }
 
 /* The overlay stops itself when it hears nothing for long enough. */
-function stopFromOverlay() {
+function stopFromOverlay(reason) {
+  if (reason && process.env.GUYA_DEBUG) console.log(`[guya] the overlay stopped the recording: ${reason}`);
   if (state.phase !== 'recording' && state.phase !== 'starting') return { ok: false };
   clearTimers();
   setPhase('transcribing');
   pushPanel();
   gemini.warm();
+  armWatchdog();
   return { ok: true };
 }
 
@@ -250,6 +312,8 @@ function reportMicFailure(errorKey) {
 
 module.exports = {
   onHotkey,
+  onEscape,
+  cancelSession,
   startRecording,
   confirmStarted,
   stopFromOverlay,

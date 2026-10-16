@@ -127,6 +127,7 @@
     /* ---- panel actions and status ---- */
     'action.test': { fa: 'تست کلید', en: 'Test key' },
     'action.record': { fa: 'شروع ضبط', en: 'Start recording' },
+    'action.cancel': { fa: 'انصراف', en: 'Cancel' },
     'action.stop': { fa: 'توقف', en: 'Stop' },
     'status.ready': { fa: 'آماده', en: 'Ready' },
     'status.starting': { fa: 'آماده‌سازی میکروفون…', en: 'Starting microphone…' },

@@ -120,15 +120,25 @@ function register() {
   });
 
   ipcMain.handle('audio:ready', () => recorder.confirmStarted());
-  ipcMain.handle('audio:auto-stop', () => recorder.stopFromOverlay());
+  ipcMain.handle('audio:auto-stop', (_event, reason) => recorder.stopFromOverlay(reason));
   ipcMain.handle('audio:error', (_event, errorKey) => recorder.reportMicFailure(errorKey));
+  ipcMain.handle('recording:cancel', () => {
+    recorder.cancelSession();
+    return state_.publicState();
+  });
 
   ipcMain.handle('audio:result', (_event, payload) => {
-    const wav = Buffer.from(payload && payload.wav ? payload.wav : []);
-    const durationMs = payload && payload.durationMs ? payload.durationMs : 0;
-    const voiceMs = payload && Number.isFinite(payload.voiceMs) ? payload.voiceMs : durationMs;
+    const bytes = payload && payload.wav;
+    const usable = bytes instanceof Uint8Array || bytes instanceof ArrayBuffer || Buffer.isBuffer(bytes);
+    const durationMs = payload && payload.durationMs;
+    if (!usable || !Number.isFinite(durationMs) || durationMs < 0) {
+      return recorder.fail('error.unexpected');
+    }
+    const wav = Buffer.from(bytes);
+    const voiceMs = Number.isFinite(payload.voiceMs) ? payload.voiceMs : durationMs;
+    const trimmedMs = Number.isFinite(payload.trimmedMs) ? payload.trimmedMs : durationMs;
     // Never let a slow API call block the renderer's invoke channel for long.
-    recorder.handleAudioResult(wav, durationMs, voiceMs).catch(() => recorder.fail('error.unexpected'));
+    recorder.handleAudioResult(wav, durationMs, voiceMs, trimmedMs).catch(() => recorder.fail('error.unexpected'));
     return { ok: true };
   });
 }

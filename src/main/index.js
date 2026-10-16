@@ -33,6 +33,11 @@ function start() {
   permissions.install();
   menu.install();
 
+  /* A renderer that crashes is a session that cannot continue: the overlay owns the
+   * microphone, so its death has to end the session rather than leave the app
+   * waiting for an answer that can no longer come. */
+  windows.whenOverlayDies(() => recorder.reportMicFailure('error.micFailed'));
+
   windows.getOverlay(); // preload the overlay renderer so the first hotkey feels instant
   windows.getPanel();
   ipc.register();

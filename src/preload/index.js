@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('guya', {
   listModels: () => ipcRenderer.invoke('models:list'),
   testKey: (model) => ipcRenderer.invoke('models:test', model),
   toggleRecording: () => ipcRenderer.invoke('recording:toggle'),
+  cancelRecording: () => ipcRenderer.invoke('recording:cancel'),
   copyToClipboard: (text) => ipcRenderer.invoke('clipboard:copy', text),
   openPrivacySettings: (kind) => ipcRenderer.invoke('system:open-privacy', kind),
   accessibilityStatus: () => ipcRenderer.invoke('permissions:accessibility'),
@@ -37,7 +38,7 @@ contextBridge.exposeInMainWorld('guya', {
   },
   overlayReady: () => ipcRenderer.invoke('audio:ready'),
   overlayFailed: (message) => ipcRenderer.invoke('audio:error', message),
-  overlayResult: (wav, durationMs, voiceMs) => ipcRenderer.invoke('audio:result', { wav, durationMs, voiceMs }),
+  overlayResult: (wav, durationMs, voiceMs, trimmedMs) => ipcRenderer.invoke('audio:result', { wav, durationMs, voiceMs, trimmedMs }),
   overlayAutoStopped: () => ipcRenderer.invoke('audio:auto-stop'),
   sendSpectrum: (levels) => ipcRenderer.send('audio:spectrum', levels)
 });

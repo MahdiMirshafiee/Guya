@@ -207,9 +207,11 @@ function renderRecorder() {
   R.status.className = 'status-line' + (status && status.text ? ' is-shown' : '') + (status && status.kind === 'error' ? ' is-error' : '');
 
   const recording = phase === 'recording';
-  const label = recording ? t('action.stop') : t('action.record');
+  /* While the answer is being fetched the same control cancels it: the wait is the
+   * longest part of a recording, and until now there was no way out of it. */
+  const label = phase === 'transcribing' ? t('action.cancel') : recording ? t('action.stop') : t('action.record');
   R.record.setAttribute('aria-label', label);
-  R.record.setAttribute('aria-disabled', phase === 'transcribing' || phase === 'starting' ? 'true' : 'false');
+  R.record.setAttribute('aria-disabled', phase === 'starting' ? 'true' : 'false');
 
   renderTimer();
   renderLoader();
@@ -262,7 +264,11 @@ function goBack() {
 }
 
 async function onRecord() {
-  if (appState.phase === 'transcribing' || appState.phase === 'starting') return;
+  if (appState.phase === 'transcribing') {
+    await api.cancelRecording();
+    return;
+  }
+  if (appState.phase === 'starting') return;
   // An unconfigured app cannot record anything, so take the user where the fix
   // is instead of failing after they have spoken.
   if (!settings.apiKey) {

@@ -45,7 +45,9 @@ let graphReady = null;
 let chunks = [];
 let captureRate = 0;
 let capturing = false;
+let starting = false;
 let pendingStop = false;
+let sessionToken = 0;
 let bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
 let levelTickAt = 0;
 let silenceStopMs = DEFAULT_SILENCE_STOP_MS;
@@ -138,7 +140,7 @@ function onChunk(chunk) {
       lastVoiceAt = performance.now();
     } else if (silenceStopMs > 0 && performance.now() - lastVoiceAt > silenceStopMs) {
       // Tell the main process first, so it is ready to transcribe the result.
-      api.overlayAutoStopped();
+      api.overlayAutoStopped('end-of-speech');
       stopCapture();
     }
     if (capturing) chunks.push(chunk);
@@ -153,7 +155,7 @@ function micErrorKey(err) {
   return 'error.micFailed';
 }
 
-async function openMic() {
+async function openMic(token) {
   /* Everything that does not need the device is built at boot, so the only thing
    * between the user's keypress and a live microphone is the device itself. */
   const prepared = prepareGraph();
@@ -165,20 +167,58 @@ async function openMic() {
     reportFailure(err);
     return false;
   }
+  /* The user gave up, or a new recording started, while the device was opening:
+   * this stream belongs to nobody, and leaving it open leaves the microphone on. */
+  if (token !== sessionToken) {
+    opened.getTracks().forEach((track) => track.stop());
+    return false;
+  }
   stream = opened;
 
   try {
     await prepared;
+    if (token !== sessionToken) {
+      releaseMic();
+      return false;
+    }
     sourceNode = audioCtx.createMediaStreamSource(stream);
     sourceNode.connect(captureNode);
     sourceNode.connect(analyser);
     if (audioCtx.state === 'suspended') await audioCtx.resume();
     captureRate = audioCtx.sampleRate;
+    /* A device that goes away mid-recording (unplugged, taken by another app) must
+     * end the recording rather than record silence for five minutes. */
+    stream.getAudioTracks().forEach((track) => {
+      track.onended = () => onDeviceLost(token);
+    });
   } catch (err) {
     reportFailure(err);
     return false;
   }
   return true;
+}
+
+function onDeviceLost(token) {
+  if (token !== sessionToken || !capturing) return;
+  if (voiceMs > 0) {
+    api.overlayAutoStopped('device-lost'); // keep what was said
+    stopCapture();
+  } else {
+    reportFailure('error.micNotFound');
+  }
+}
+
+/* The main process said to stop now: release the microphone and forget the session. */
+function abortCapture() {
+  sessionToken++;
+  capturing = false;
+  starting = false;
+  pendingStop = false;
+  chunks = [];
+  voiceMs = 0;
+  releaseMic();
+  bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
+  orb.setDriven(false);
 }
 
 /* The context, the worklet and the analyser, once, as early as possible: building
@@ -236,12 +276,17 @@ function releaseMic() {
   }
   sourceNode = null;
   stream = null;
+  /* Nothing is being recorded: holding the output device open keeps the CPU awake
+   * for nothing. The graph is rebuilt by prepareGraph() when it is needed again. */
+  if (audioCtx && audioCtx.state === 'running') audioCtx.suspend().catch(() => {});
   if (spectrumBins) spectrumBins.fill(0);
 }
 
 async function reportFailure(err) {
   capturing = false;
+  starting = false;
   pendingStop = false;
+  sessionToken++; // any openMic() still in flight is nobody's now
   releaseMic();
   bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
   setState('error', '');
@@ -250,7 +295,9 @@ async function reportFailure(err) {
 }
 
 async function startCapture() {
-  if (capturing) return;
+  if (capturing || starting) return; // re-entrancy: one microphone owner, one session
+  starting = true;
+  const token = ++sessionToken;
   pendingStop = false;
   bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
   chunks = [];
@@ -259,8 +306,9 @@ async function startCapture() {
   setState('starting', '');
 
   captureRate = 0;
-  const opened = await openMic();
-  if (!opened) return;
+  const opened = await openMic(token);
+  starting = false;
+  if (!opened || token !== sessionToken) return;
 
   capturing = true;
   setState('listening', '');
@@ -308,6 +356,8 @@ api.onOverlayCommand((payload) => {
     startCapture();
   } else if (payload.type === 'stop') {
     stopCapture();
+  } else if (payload.type === 'abort') {
+    abortCapture();
   } else if (payload.type === 'flash') {
     // The main process sends a key; this window owns the words, in whatever
     // language the interface is in right now.

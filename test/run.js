@@ -14,6 +14,7 @@ const Module = require('module');
 /* ------------------------------------------------------- electron stub ----- */
 
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guya-test-'));
+const clipboardWrites = [];
 const fakeElectron = {
   app: {
     getPath: () => userDataDir,
@@ -22,7 +23,7 @@ const fakeElectron = {
     on: () => {},
     dock: null
   },
-  clipboard: { writeText: () => {} },
+  clipboard: { writeText: (text) => clipboardWrites.push(text) },
   systemPreferences: { getMediaAccessStatus: () => 'granted', askForMediaAccess: async () => true },
   shell: { openExternal: () => Promise.resolve() }
 };
@@ -1208,16 +1209,26 @@ test('the shortcut the system is given starts a recording', async () => {
   assert.ok(await settle(() => state.phase === 'error'), 'the app says what is missing instead of crashing');
   assert.strictEqual(state.lastErrorKey, 'error.noKey');
 
+  /* Two presses in the same instant cannot be two intentions: a held key repeats,
+   * and the second press must be ignored. */
   store.update({ apiKey: 'key-123' });
+  await handler();
+  assert.strictEqual(state.phase, 'error', 'a second press inside the debounce does nothing');
+  await new Promise((resolve) => setTimeout(resolve, 400));
+
   await handler();
   assert.ok(await settle(() => state.phase === 'starting'), 'with a key it starts listening');
   assert.ok(windowCalls.indexOf('overlay:start') !== -1, 'and the overlay is told to start');
   assert.strictEqual(state.lastErrorKey, '');
 });
 
-test('Escape is grabbed while recording and never before', () => {
+test('Escape is held while the app is busy and never before', () => {
   const { setPhase } = require('../src/main/state');
-  assert.ok(shortcutHandlers.has('Escape'), 'the microphone is open, so Escape is ours');
+  assert.ok(shortcutHandlers.has('Escape'), 'the microphone is opening, so Escape is ours');
+  /* Waiting for the provider is the longest part of a recording, and Escape is the
+   * only way out of it. */
+  setPhase('transcribing');
+  assert.ok(shortcutHandlers.has('Escape'), 'and it stays ours while the answer is coming');
   setPhase('idle');
   assert.ok(!shortcutHandlers.has('Escape'), 'at rest it belongs to whatever app the user is in');
 });
@@ -1247,6 +1258,76 @@ test('a recording with no speech is never sent to the model', async () => {
   const spoken = await recorder.handleAudioResult(Buffer.from(validWav()), 3000, 2500);
   assert.strictEqual(spoken.ok, true, 'speech still goes through');
   assert.strictEqual(asked, 1);
+  setPhase('idle');
+});
+
+test('a cancelled transcription reaches neither the clipboard nor the screen', async () => {
+  const { state, setPhase } = require('../src/main/state');
+  const recorder = require('../src/main/recorder.js');
+  store.update({ apiKey: 'key-123', pasteAfterTranscribe: false, copyToClipboard: true });
+
+  /* A request that only ever answers with an abort. */
+  globalThis.fetch = (url, options) => new Promise((_, reject) => {
+    options.signal.addEventListener('abort', () => {
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      reject(err);
+    });
+  });
+
+  setPhase('transcribing');
+  state.lastTranscript = '';
+  clipboardWrites.length = 0;
+  const pending = recorder.handleAudioResult(Buffer.from(validWav()), 3000, 2500, 3000);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  recorder.cancelSession();
+  const result = await pending;
+
+  assert.strictEqual(result.ok, false, 'a cancelled run is not a success');
+  assert.strictEqual(state.phase, 'idle', 'the app is back to rest');
+  assert.strictEqual(state.lastTranscript, '', 'nothing was transcribed');
+  assert.deepStrictEqual(clipboardWrites, [], 'and nothing was copied');
+  assert.strictEqual(windowCalls.indexOf('overlay:abort') !== -1, true, 'the microphone was released');
+});
+
+test('an answer that arrives after the session ended is ignored', async () => {
+  const { state, setPhase } = require('../src/main/state');
+  const recorder = require('../src/main/recorder.js');
+
+  stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: '{"speech":true,"text":"too late"}' }] } }] } }));
+  setPhase('transcribing');
+  state.lastTranscript = '';
+  clipboardWrites.length = 0;
+  /* The watchdog already gave up: the phase is the error state, not transcribing. */
+  setPhase('error');
+  const result = await recorder.handleAudioResult(Buffer.from(validWav()), 3000, 2500, 3000);
+
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(state.lastTranscript, '', 'the late answer is nobody\'s');
+  assert.deepStrictEqual(clipboardWrites, []);
+  setPhase('idle');
+});
+
+test('ending a session quietly leaves the app at rest', async () => {
+  const { state, setPhase } = require('../src/main/state');
+  const recorder = require('../src/main/recorder.js');
+
+  setPhase('recording');
+  windowCalls.length = 0;
+  recorder.cancelSession();
+  assert.strictEqual(state.phase, 'idle');
+  assert.ok(windowCalls.indexOf('overlay:abort') !== -1, 'the overlay is told to release the microphone');
+  assert.ok(windowCalls.indexOf('hideOverlay') !== -1, 'and the orb goes away');
+
+  /* Escape means the same thing while the microphone is opening. */
+  setPhase('starting');
+  recorder.onEscape();
+  assert.strictEqual(state.phase, 'idle', 'Escape cancels a start that has not finished');
+
+  /* And it keeps its other meaning while recording: stop, do not cancel. */
+  setPhase('recording');
+  recorder.onEscape();
+  assert.strictEqual(state.phase, 'transcribing', 'while recording Escape stops and transcribes');
   setPhase('idle');
 });
 

@@ -76,6 +76,10 @@ function createPanel() {
   panelWin.loadURL(rendererUrl('panel/panel.html'));
   traceRenderer(panelWin, 'panel');
 
+  panelWin.webContents.on('render-process-gone', () => {
+    if (panelWin && !panelWin.isDestroyed()) panelWin.reload();
+  });
+
   panelWin.on('close', (event) => {
     // On macOS the app keeps living in the dock; elsewhere closing means quit.
     if (IS_MAC && !app.isQuitting) {
@@ -147,6 +151,20 @@ function createOverlay() {
 
   overlayReady = new Promise((resolve) => overlayWin.webContents.once('did-finish-load', resolve));
   overlayWin.webContents.on('did-finish-load', () => overlayWin.hide());
+
+  /* A renderer that dies takes the microphone with it. Rebuild it on the next use
+   * and tell whoever is listening: without this, every start failed ten seconds
+   * later with no explanation. */
+  overlayWin.webContents.on('render-process-gone', () => {
+    try {
+      overlayWin.destroy();
+    } catch (_) {
+      /* already gone */
+    }
+    overlayWin = null;
+    overlayReady = null;
+    notifyOverlayGone();
+  });
   overlayWin.loadURL(rendererUrl('overlay/overlay.html'));
   traceRenderer(overlayWin, 'overlay');
   return overlayWin;
@@ -200,7 +218,18 @@ function sendToOverlay(payload) {
   else deliver();
 }
 
+/* Set by the composition root: windows.js cannot require recorder (that would be a
+ * cycle), so a dead renderer is reported outward instead of handled here. */
+let onOverlayGone = null;
+function whenOverlayDies(handler) {
+  onOverlayGone = handler;
+}
+function notifyOverlayGone() {
+  if (onOverlayGone) onOverlayGone();
+}
+
 module.exports = {
+  whenOverlayDies,
   getPanel,
   showPanel,
   panelHasFocus,
