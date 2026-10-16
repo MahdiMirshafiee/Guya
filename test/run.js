@@ -336,6 +336,172 @@ test('rms and concat behave', () => {
   assert.deepStrictEqual(Array.from(joined), [1, 2, 3]);
 });
 
+group('meters');
+
+/* What the orb and the equaliser do with a room that hisses and a voice that
+ * syllables, before either is drawn. The numbers are the ones the design is built
+ * on: noise reads nothing, speech moves every bar, and both relax within a third of
+ * a second of the voice stopping. */
+(function meterSimulations() {
+  let seed = 11;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const expo = () => -Math.log(1 - rnd());
+  const mean = (list) => list.reduce((a, b) => a + b, 0) / list.length;
+
+  const BANDS = 48;
+  const DT = 33;
+  const noiseDb = (b) => -85 + 12 * (1 - b / BANDS);
+
+  function frame(t) {
+    const speaking = t >= 3000 && t < 5500;
+    const syllable = speaking ? 0.35 + 0.65 * Math.abs(Math.sin(t / 130)) : 0;
+    const db = [];
+    for (let b = 0; b < BANDS; b++) {
+      const bins = b < 8 ? 3 : b < 24 ? 6 : 14;
+      let power = 0;
+      for (let i = 0; i < bins; i++) power += expo();
+      power /= bins;
+      let value = noiseDb(b) + 10 * Math.log10(power);
+      if (speaking) {
+        const boost = b < 30 ? 30 - b * 0.4 : 12;
+        value = 10 * Math.log10(Math.pow(10, value / 10) + Math.pow(10, (noiseDb(b) + boost * syllable) / 10) * 5);
+      }
+      db.push(value);
+    }
+    return db;
+  }
+
+  test('the equalizer is silent in a room and moves with a voice', () => {
+    const out = new Array(BANDS).fill(0);
+    const normalize = GuyaAudio.createBandNormalizer(BANDS);
+    const stats = { noise: [], speech: [], after: [] };
+    for (let t = 0; t < 8000; t += DT) {
+      normalize(frame(t), DT, out);
+      const level = mean(out);
+      if (t > 1500 && t < 3000) stats.noise.push(level);
+      else if (t > 3300 && t < 5500) stats.speech.push(level);
+      else if (t > 6500) stats.after.push(level);
+    }
+    assert.ok(mean(stats.noise) < 0.05, 'noise reads nothing: ' + mean(stats.noise).toFixed(3));
+    assert.ok(mean(stats.speech) > 0.5, 'speech moves the bars: ' + mean(stats.speech).toFixed(3));
+    assert.ok(Math.max.apply(null, stats.noise) < 0.2, 'and no bar twitches on its own: ' + Math.max.apply(null, stats.noise).toFixed(3));
+    assert.ok(mean(stats.after) < 0.05, 'and they settle again: ' + mean(stats.after).toFixed(3));
+  });
+
+  test('the orb pulse follows the voice and relaxes after it', () => {
+    const meter = GuyaAudio.createLevelMeter();
+    const floor = 0.0024;
+    const noise = [];
+    const speech = [];
+    const after = [];
+    let reaction = null;
+    for (let t = 0; t < 8000; t += 16) {
+      const speaking = t >= 3000 && t < 5500;
+      const rms = speaking ? 0.04 * (0.25 + 1.5 * Math.abs(Math.sin(t / 130)) * (0.7 + 0.3 * rnd())) : floor * (1 + (rnd() - 0.5) * 0.6);
+      const level = meter.push(rms, floor, 16);
+      if (t > 500 && t < 3000) noise.push(level);
+      else if (t >= 3000 && t < 5500) {
+        speech.push(level);
+        if (reaction === null && level > 0.3) reaction = t - 3000;
+      } else if (t > 6500) after.push(level);
+    }
+    assert.ok(Math.max.apply(null, noise) < 0.05, 'a quiet room leaves the orb still: ' + Math.max.apply(null, noise).toFixed(3));
+    assert.ok(mean(speech) > 0.5, 'a voice drives it: ' + mean(speech).toFixed(3));
+    const lowest = Math.min.apply(null, speech);
+    assert.ok(lowest < 0.5, 'and it pulses with the syllables rather than sitting flat: ' + lowest.toFixed(3));
+    assert.ok(Math.max.apply(null, after) < 0.05, 'and it settles when the voice stops: ' + Math.max.apply(null, after).toFixed(3));
+    assert.ok(reaction !== null && reaction < 100, 'it reacts on the first frames: ' + reaction + 'ms');
+  });
+})();
+
+group('silence detection');
+
+/* The detector, driven by synthetic audio: a room that breathes, speech with a
+ * syllable rhythm and pauses, and the things that used to keep it alive — a fan, a
+ * keyboard, a click. Each case states what should happen within 90 seconds of
+ * simulated audio. */
+(function silenceSimulations() {
+  let seed = 662;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const room = (base, wobble) => base * (1 + (rnd() - 0.5) * (wobble === undefined ? 0.6 : wobble));
+  const speech = (t, level) => ((t % 1300) > 1000 ? room(0.0024) : level * (0.25 + 1.5 * rnd()));
+
+  function run(rmsAt, options) {
+    const gate = GuyaAudio.createVoiceGate((options && options.gate) || {});
+    const endpointer = GuyaAudio.createEndpointer((options && options.ep) || {});
+    let stopped = null;
+    let voicedMs = 0;
+    for (let t = 0; t < 90000; t += 64) {
+      const g = gate.push(rmsAt(t), 64);
+      if (g.voiced) voicedMs += 64;
+      const reason = endpointer.push(g.voiced, 64);
+      if (reason) {
+        stopped = reason;
+        break;
+      }
+    }
+    return { stopped, voicedMs };
+  }
+
+  test('a quiet room with nobody speaking stops itself', () => {
+    const result = run(() => room(0.0024));
+    assert.strictEqual(result.stopped, 'no-speech', 'nothing was said, so nothing is sent');
+    assert.strictEqual(result.voicedMs, 0, 'and no speech was counted');
+  });
+
+  test('a keyboard does not keep the microphone open', () => {
+    const result = run((t) => (t % 3000 < 64 ? 0.05 : room(0.0024)));
+    assert.strictEqual(result.stopped, 'no-speech', 'a click is one frame, and speech takes two');
+  });
+
+  test('someone who speaks and stops is cut off shortly after', () => {
+    const result = run((t) => (t < 5000 ? speech(t, 0.04) : room(0.0024)));
+    assert.strictEqual(result.stopped, 'end-of-speech');
+    assert.ok(result.voicedMs > 3000, 'their words were counted: ' + result.voicedMs + 'ms');
+  });
+
+  test('a quiet speaker is heard, not dismissed as silence', () => {
+    /* The old fixed floor of 0.008 called this silence and never asked the provider. */
+    const result = run((t) => (t < 5000 ? speech(t, 0.006) : room(0.0024)));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'a quiet voice is still a voice');
+    assert.ok(result.voicedMs > 2000, result.voicedMs + 'ms of speech counted');
+  });
+
+  test('a long sentence is not cut off in the middle', () => {
+    const result = run((t) => (t < 30000 ? speech(t, 0.04) : room(0.0024)));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'thirty seconds of talking keeps it open');
+    assert.ok(result.voicedMs > 20000, result.voicedMs + 'ms counted');
+  });
+
+  test('a fan that starts after the user speaks does not hold it open', () => {
+    const result = run((t) => (t < 2000 ? speech(t, 0.04) : room(0.003 + 0.017 * Math.min(1, (t - 2000) / 8000), 0.2)));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'steady noise is not speech');
+  });
+
+  test('a room that is loud from the start stops rather than hanging', () => {
+    /* A very noisy room is indistinguishable from speech for the first seconds; what
+     * matters is that it cannot hang, and that the second recording knows the room. */
+    const result = run((t) => (t < 64 ? 0 : room(0.010, 0.2)));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'it stops');
+    assert.ok(result.voicedMs < 90000, 'and it does stop');
+  });
+
+  test('a click during the pause after speech does not restart the wait', () => {
+    const result = run((t) => (t < 4000 ? speech(t, 0.04) : (t % 2000 < 64 ? 0.05 : room(0.0024))));
+    assert.strictEqual(result.stopped, 'end-of-speech', 'the pause is still a pause');
+  });
+
+  test('speaking in a noisy room still ends when the speaking does', () => {
+    const result = run((t) => (t < 6000 ? Math.max(speech(t, 0.05), room(0.010, 0.2)) : room(0.010, 0.2)));
+    assert.strictEqual(result.stopped, 'end-of-speech');
+  });
+
+  test('both timers can be switched off', () => {
+    const result = run(() => room(0.0024), { ep: { noSpeechMs: 0, endSilenceMs: 0 } });
+    assert.strictEqual(result.stopped, null, 'a recording with no limits runs until the user stops it');
+  });
+})();
+
 /* ======================================================== accelerator ==== */
 
 group('accelerator');

@@ -277,7 +277,13 @@
    * Both are pure and count audio time rather than wall-clock time, so they behave
    * the same in a test and in a slow renderer. */
   function createVoiceGate(options) {
-    var o = { windowMs: 2500, minThreshold: 0.0035, onsetRatio: 3.5, offsetRatio: 2.2, onsetMs: 100, hangMs: 400, voicedRisePerSec: 1.3, initialFloor: 0.002, hardFloor: 0.0003, steadyMs: 800, steadyRatio: 2.2 };
+    /* minThreshold is measured, not chosen: on this machine with the platform's gain
+     * doing its work, a room sits at 0.0024 RMS on average and 0.0052 at its loudest
+     * tenth, while someone talking averages 0.0145. At 0.0035 the room itself cleared
+     * the threshold and most of a silent recording counted as speech — which is how a
+     * recording of a room came back as an invented word. 0.006 sits above the room's
+     * loud moments and below a quiet speaker's peaks. */
+    var o = { windowMs: 2500, minThreshold: 0.006, onsetRatio: 3.5, offsetRatio: 2.2, onsetMs: 100, hangMs: 400, voicedRisePerSec: 1.3, initialFloor: 0.002, hardFloor: 0.0003, steadyMs: 800, steadyRatio: 2.2 };
     if (options) for (var k in options) o[k] = options[k];
     var history = [], clock = 0, floor = o.initialFloor, voiced = false, onsetRun = 0, hang = 0;
     function push(rms, frameMs) {
