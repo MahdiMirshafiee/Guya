@@ -170,6 +170,37 @@ async function testKey(apiKey, model, uiLanguage) {
   }
 }
 
+/* The answer is a JSON object — {"speech": bool, "text": string} — because the
+ * model has to be able to say "there was nothing to transcribe" and be taken at
+ * its word. Asked to answer with the transcript alone, it fills the silence:
+ * measured on this machine, a recording of a quiet room came back as an invented
+ * sentence, and another as an apology for not being able to transcribe. A schema
+ * gives it a legitimate empty answer, which is the one it takes.
+ *
+ * Prose is still accepted: a model that ignores the shape is transcribed as
+ * before rather than thrown away. */
+function readTranscript(raw) {
+  const text = String(raw || '').trim();
+  if (!text) return { speech: null, text: '' };
+
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start === -1 || end <= start) return { speech: null, text };
+  try {
+    const parsed = JSON.parse(text.slice(start, end + 1));
+    if (!parsed || typeof parsed !== 'object') return { speech: null, text };
+    const transcript = typeof parsed.text === 'string' ? parsed.text.trim() : '';
+    const speech = typeof parsed.speech === 'boolean' ? parsed.speech : null;
+    /* A model that says there was speech but writes nothing has said the same
+     * thing; one that says there was none is believed. */
+    if (speech === false) return { speech: false, text: '' };
+    if (!transcript && speech === null) return { speech: null, text };
+    return { speech: speech === null ? true : speech, text: transcript };
+  } catch (_) {
+    return { speech: null, text };
+  }
+}
+
 function readCandidate(json, uiLanguage) {
   const feedback = json && json.promptFeedback;
   const candidate = json && json.candidates && json.candidates[0];
@@ -179,18 +210,16 @@ function readCandidate(json, uiLanguage) {
     }
     return { ok: false, errorKey: 'error.emptyReply', error: t(uiLanguage, 'error.emptyReply') };
   }
-  const text = ((candidate.content && candidate.content.parts) || [])
-    .map((p) => p.text || '')
-    .join('')
-    .replace(/^\s+/, '')
-    .replace(/\s+$/, '');
-  if (!text) {
+
+  const raw = ((candidate.content && candidate.content.parts) || []).map((p) => p.text || '').join('');
+  const answer = readTranscript(raw);
+  if (answer.speech === false || !answer.text) {
     if (candidate.finishReason === 'SAFETY') {
       return { ok: false, errorKey: 'error.filtered', error: t(uiLanguage, 'error.filtered') };
     }
     return { ok: false, errorKey: 'error.noSpeech', error: t(uiLanguage, 'error.noSpeech') };
   }
-  return { ok: true, text, truncated: candidate.finishReason === 'MAX_TOKENS' };
+  return { ok: true, text: answer.text, truncated: candidate.finishReason === 'MAX_TOKENS' };
 }
 
 /* 8 tokens per second of audio is generous for speech and stops a rambling
@@ -231,7 +260,7 @@ async function transcribe({ apiKey, model, wav, settings, seconds, onAttempt }) 
       'HARM_CATEGORY_SEXUALLY_EXPLICIT',
       'HARM_CATEGORY_DANGEROUS_CONTENT'
     ].map((category) => ({ category, threshold: 'BLOCK_ONLY_HIGH' })),
-    generationConfig: { temperature: 0, maxOutputTokens: outputCap(seconds || 0) }
+    generationConfig: { temperature: 0, maxOutputTokens: outputCap(seconds || 0), responseMimeType: 'application/json' }
   };
 
   /* Extended thinking buys nothing for transcription and costs seconds, so it is
@@ -267,11 +296,23 @@ async function transcribe({ apiKey, model, wav, settings, seconds, onAttempt }) 
       break;
     }
 
-    // A model that refuses the thinking config is asked again without it.
-    if (!res.ok && res.status === 400 && body.generationConfig.thinkingConfig) {
-      delete body.generationConfig.thinkingConfig;
+    /* A 400 is the model refusing part of the request, and the two things it
+     * refuses are the thinking config and the JSON answer shape. The thinking goes
+     * first — it is the one that costs seconds — and the shape after it, since a
+     * model that will not answer in JSON still transcribes and prose is read as
+     * prose. A 400 that names the key is none of our business: that is an answer,
+     * not something to try again. */
+    const refusal = (res.json && res.json.error && res.json.error.message) || '';
+    const aboutTheKey = /api[\s_-]?key/i.test(refusal);
+    const drop = body.generationConfig.thinkingConfig
+      ? 'thinkingConfig'
+      : body.generationConfig.responseMimeType
+        ? 'responseMimeType'
+        : null;
+    if (!res.ok && res.status === 400 && drop && !aboutTheKey) {
+      delete body.generationConfig[drop];
       options.body = JSON.stringify(body);
-      if (process.env.GUYA_DEBUG) console.log('[guya] model refused thinkingConfig, retrying without it');
+      if (process.env.GUYA_DEBUG) console.log(`[guya] the model refused the ${drop}, asking again without it`);
       try {
         res = await callApi(url, options);
       } catch (err) {

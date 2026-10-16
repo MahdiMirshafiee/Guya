@@ -9,6 +9,11 @@ const { LANGUAGES: SPOKEN_LANGUAGES, LEGACY_PROMPTS } = require('../shared/i18n'
 const { DEFAULT_PROMPT, PROMPT_REVISION } = require('../shared/prompt');
 
 const FILE = path.join(app.getPath('userData'), 'settings.json');
+/* The field is the instructions themselves, so the cap has to be above the app's
+ * own text: at 4000 it silently cut the last rules off the default prompt, which
+ * is a limit nobody would notice until the transcript was subtly wrong. It is here
+ * to keep a runaway paste out of the settings file, not to size the instructions. */
+const MAX_PROMPT_CHARS = 8000;
 /* The app used to be called V2T: carry a configured install over rather than
  * asking for the key again. */
 const LEGACY_FILE = path.join(path.dirname(app.getPath('userData')), 'V2T', 'settings.json');
@@ -25,8 +30,8 @@ function sanitize(raw, fallback) {
   if (typeof raw.apiKey === 'string') out.apiKey = raw.apiKey.trim().slice(0, 300);
   if (typeof raw.model === 'string' && raw.model.trim()) out.model = raw.model.trim().slice(0, 120);
   if (typeof raw.language === 'string' && LANGUAGE_CODES.indexOf(raw.language) !== -1) out.language = raw.language;
-  if (typeof raw.prompt === 'string') out.prompt = raw.prompt.slice(0, 4000);
-  if (typeof raw.promptSeeded === 'string') out.promptSeeded = raw.promptSeeded.slice(0, 4000);
+  if (typeof raw.prompt === 'string') out.prompt = raw.prompt.slice(0, MAX_PROMPT_CHARS);
+  if (typeof raw.promptSeeded === 'string') out.promptSeeded = raw.promptSeeded.slice(0, MAX_PROMPT_CHARS);
   if (typeof raw.promptRevision === 'number') out.promptRevision = raw.promptRevision;
   if (raw.uiLanguage === 'fa' || raw.uiLanguage === 'en') out.uiLanguage = raw.uiLanguage;
   if (typeof raw.shortcut === 'string' && /^[A-Za-z0-9+]+$/.test(raw.shortcut)) out.shortcut = raw.shortcut;
@@ -70,7 +75,7 @@ function seedPrompt() {
   if (!(cache.promptRevision >= PROMPT_REVISION)) {
     const bundled = Object.keys(LEGACY_PROMPTS).map((k) => LEGACY_PROMPTS[k]);
     const mine = text && text !== DEFAULT_PROMPT && !ours && bundled.indexOf(text) === -1 ? text : '';
-    cache.prompt = (mine ? `${DEFAULT_PROMPT}\n\n${mine}` : DEFAULT_PROMPT).slice(0, 4000);
+    cache.prompt = (mine ? `${DEFAULT_PROMPT}\n\n${mine}` : DEFAULT_PROMPT).slice(0, MAX_PROMPT_CHARS);
     cache.promptRevision = PROMPT_REVISION;
     cache.promptSeeded = DEFAULT_PROMPT;
     return;
