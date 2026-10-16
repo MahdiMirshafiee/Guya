@@ -54,6 +54,11 @@
     'error.forbidden': { fa: 'دسترسی رد شد؛ مطمئن شوید کلید API فعال است.', en: 'Access denied — check that the API key is active.' },
     'error.modelMissing': { fa: 'این مدل برای کلید شما در دسترس نیست.', en: 'This model is not available for your key.' },
     'error.quota': { fa: 'سهمیه یا محدودیت نرخ درخواست پر شده است.', en: 'Rate limit or quota reached.' },
+    'error.quotaWait': {
+      fa: 'سهمیه پر شده؛ حدود {retryAfter} ثانیه دیگر دوباره تلاش کنید.',
+      en: 'Quota reached. Try again in about {retryAfter} seconds.'
+    },
+    'error.cancelled': { fa: 'لغو شد.', en: 'Cancelled.' },
     'error.server': { fa: 'خطای موقت سرویس گوگل، دوباره تلاش کنید.', en: 'Temporary Google service error, try again.' },
     'error.http': { fa: 'خطای HTTP {status}', en: 'HTTP error {status}' },
     'error.noSpeech': { fa: 'متنی از صدا تشخیص داده نشد.', en: 'No speech detected in that audio.' },

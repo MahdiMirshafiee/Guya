@@ -457,6 +457,8 @@ function stubFetch(handler) {
     return {
       ok: result.status >= 200 && result.status < 300,
       status: result.status,
+      /* The client reads Retry-After; a stub without headers is a stub that said nothing. */
+      headers: { get: (name) => (result.headers || {})[String(name).toLowerCase()] || null },
       text: async () => JSON.stringify(result.body)
     };
   };
@@ -466,15 +468,25 @@ function validWav() {
   return GuyaAudio.wavFromFloat32(sine(440, 0.2, 16000), 16000);
 }
 
-test('flash models are asked without extended thinking', async () => {
+test('thinking is held down per model family', async () => {
   stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } }));
-  await gemini.transcribe({ apiKey: 'k', model: 'gemini-2.5-flash', wav: validWav(), settings: {} });
-  const body = JSON.parse(lastRequest.options.body);
+  await gemini.transcribe({ apiKey: 'k', model: 'gemini-2.5-flash', wav: validWav(), seconds: 5, settings: {} });
+  let body = JSON.parse(lastRequest.options.body);
   assert.deepStrictEqual(body.generationConfig.thinkingConfig, { thinkingBudget: 0 }, 'thinking costs seconds for no gain');
+  const flashCap = body.generationConfig.maxOutputTokens;
 
+  /* Pro cannot be switched off, so it is given its smallest budget — and the cap
+   * has to have room for it, or the thinking eats the answer. */
   stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } }));
-  await gemini.transcribe({ apiKey: 'k', model: 'gemini-2.5-pro', wav: validWav(), settings: {} });
-  assert.strictEqual(JSON.parse(lastRequest.options.body).generationConfig.thinkingConfig, undefined, 'pro rejects a zero budget');
+  await gemini.transcribe({ apiKey: 'k', model: 'gemini-2.5-pro', wav: validWav(), seconds: 5, settings: {} });
+  body = JSON.parse(lastRequest.options.body);
+  assert.deepStrictEqual(body.generationConfig.thinkingConfig, { thinkingBudget: 128 }, 'pro rejects a zero budget');
+  assert.ok(body.generationConfig.maxOutputTokens > flashCap, 'and carries the reserve for it');
+
+  /* Gemini 3 takes a level instead of a budget. */
+  stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } }));
+  await gemini.transcribe({ apiKey: 'k', model: 'gemini-3-flash', wav: validWav(), seconds: 5, settings: {} });
+  assert.deepStrictEqual(JSON.parse(lastRequest.options.body).generationConfig.thinkingConfig, { thinkingLevel: 'minimal' });
 });
 
 test('a rejected thinking config is retried without it', async () => {
@@ -691,6 +703,219 @@ test('the key check cannot fail for reasons that are not the key', async () => {
   };
   const offline = await gemini.testKey('k', 'm', 'en');
   assert.strictEqual(offline.errorKey, 'error.offline');
+});
+
+/* A copy of the client with the two timeout constants shrunk, so the paths that
+ * only happen when a request hangs can be tested in milliseconds instead of
+ * fifteen seconds. The module under test is the real one — only the numbers differ —
+ * and its own requires are resolved from a copy of the shared modules beside it. */
+function loadGeminiWithShortTimeouts(minMs, maxMs) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'guya-fast-'));
+  fs.mkdirSync(path.join(root, 'src', 'main'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'src', 'shared'), { recursive: true });
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'gemini.js'), 'utf8');
+  const patched = source
+    .replace('const ATTEMPT_MIN_MS = 15000;', `const ATTEMPT_MIN_MS = ${minMs};`)
+    .replace('const ATTEMPT_MAX_MS = 60000;', `const ATTEMPT_MAX_MS = ${maxMs};`);
+  assert.notStrictEqual(patched, source, 'the timeout constants are where this expects them');
+  fs.writeFileSync(path.join(root, 'src', 'main', 'gemini.js'), patched);
+  ['i18n.js', 'prompt.js'].forEach((name) => {
+    fs.copyFileSync(path.join(__dirname, '..', 'src', 'shared', name), path.join(root, 'src', 'shared', name));
+  });
+  return require(path.join(root, 'src', 'main', 'gemini.js'));
+}
+
+group('provider retry behaviour');
+
+test('a model that refuses JSON mode still works, and the refusal is remembered', async () => {
+  const model = 'refuse-json-model';
+  let calls = 0;
+  const keys = [];
+  stubFetch((url, options) => {
+    calls++;
+    const sent = JSON.parse(options.body);
+    keys.push(Object.keys(sent.generationConfig).sort().join(','));
+    if (sent.generationConfig.responseMimeType) {
+      return { status: 400, body: { error: { message: 'JSON mode is not enabled for this model' } } };
+    }
+    return { status: 200, body: { candidates: [{ content: { parts: [{ text: '{"speech":true,"text":"hello world"}' }] } }] } };
+  });
+  const first = await gemini.transcribe({ apiKey: 'k', model, wav: validWav(), settings: { attempts: 1 } });
+  assert.strictEqual(first.ok, true, 'it falls back to prose instead of failing');
+  assert.strictEqual(first.text, 'hello world');
+  assert.strictEqual(calls, 2, 'one failed round trip finds out');
+
+  calls = 0;
+  const second = await gemini.transcribe({ apiKey: 'k', model, wav: validWav(), settings: { attempts: 1 } });
+  assert.strictEqual(second.ok, true);
+  assert.strictEqual(calls, 1, 'and the next recording does not pay for it again: ' + keys.join(' | '));
+});
+
+test('a truncated JSON answer is salvaged, never pasted raw', async () => {
+  const cut = '{"speech": true, "text": "سلام من امروز می‌خواهم درباره';
+  stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: cut }] }, finishReason: 'MAX_TOKENS' }] } }));
+  const salvaged = await gemini.transcribe({ apiKey: 'k', model: 'cut-model', wav: validWav(), settings: { attempts: 1 } });
+  assert.strictEqual(salvaged.ok, true);
+  assert.strictEqual(salvaged.text, 'سلام من امروز می‌خواهم درباره', 'the words, without the half-written JSON around them');
+  assert.strictEqual(salvaged.truncated, true);
+
+  stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: '{"speech": true, "te' }] }, finishReason: 'MAX_TOKENS' }] } }));
+  const unreadable = await gemini.transcribe({ apiKey: 'k', model: 'cut-model', wav: validWav(), settings: { attempts: 1 } });
+  assert.strictEqual(unreadable.ok, false, 'an unreadable fragment is an error, not a transcript');
+  assert.strictEqual(unreadable.errorKey, 'error.emptyReply');
+
+  stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: '```json\n{"speech": false, "text": ""}\n```' }] } }] } }));
+  const fenced = await gemini.transcribe({ apiKey: 'k', model: 'fenced-model', wav: validWav(), settings: { attempts: 1 } });
+  assert.strictEqual(fenced.ok, false);
+  assert.strictEqual(fenced.errorKey, 'error.noSpeech', 'a fenced empty answer is still an empty answer');
+});
+
+test('an answer the thinking ate is asked again with more room', async () => {
+  const caps = [];
+  let calls = 0;
+  stubFetch((url, options) => {
+    calls++;
+    const sent = JSON.parse(options.body);
+    caps.push(sent.generationConfig.maxOutputTokens);
+    if (calls === 1) return { status: 200, body: { candidates: [{ content: { parts: [] }, finishReason: 'MAX_TOKENS' }] } };
+    return { status: 200, body: { candidates: [{ content: { parts: [{ text: '{"speech":true,"text":"ok then"}' }] } }] } };
+  });
+  const result = await gemini.transcribe({ apiKey: 'k', model: 'gemini-2.5-pro', wav: validWav(), seconds: 4, settings: { attempts: 2 } });
+  assert.strictEqual(result.ok, true);
+  assert.strictEqual(result.text, 'ok then');
+  assert.ok(caps[1] > caps[0], 'the second attempt has more room: ' + caps.join(' -> '));
+});
+
+test('a hung request reports a timeout, not an offline error', async () => {
+  const fast = loadGeminiWithShortTimeouts(120, 400);
+  let started = 0;
+  globalThis.fetch = (url, options) => new Promise((_, reject) => {
+    started++;
+    options.signal.addEventListener('abort', () => {
+      const err = new Error('This operation was aborted');
+      err.name = 'AbortError';
+      reject(err);
+    });
+  });
+  const result = await fast.transcribe({ apiKey: 'k', model: 'hang-model', wav: validWav(), settings: { attempts: 1 } });
+  assert.strictEqual(started, 1);
+  assert.strictEqual(result.errorKey, 'error.timeout', 'the wait was ours, not the network\'s');
+});
+
+test('a quota that asks for 37 seconds is not retried', async () => {
+  let calls = 0;
+  stubFetch(() => {
+    calls++;
+    return {
+      status: 429,
+      body: { error: { message: 'Quota exceeded', details: [{ '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '37s' }] } }
+    };
+  });
+  const result = await gemini.transcribe({ apiKey: 'k', model: 'quota-model', wav: validWav(), settings: { attempts: 3 } });
+  assert.strictEqual(calls, 1, 'waiting 37 seconds is not a retry, it is a hang');
+  assert.strictEqual(result.errorKey, 'error.quotaWait');
+  assert.ok(result.errorVars.retryAfter >= 37, 'and the user is told how long: ' + JSON.stringify(result.errorVars));
+});
+
+test('a per-day quota is not retried either', async () => {
+  let calls = 0;
+  stubFetch(() => {
+    calls++;
+    return {
+      status: 429,
+      body: { error: { message: 'quota', details: [{ violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }] }] } }
+    };
+  });
+  const result = await gemini.transcribe({ apiKey: 'k', model: 'daily-model', wav: validWav(), settings: { attempts: 3 } });
+  assert.strictEqual(calls, 1, 'a daily quota will not be back in a few seconds');
+  assert.strictEqual(result.errorKey, 'error.quota');
+});
+
+test('a short Retry-After is honoured, and then it succeeds', async () => {
+  let calls = 0;
+  stubFetch(() => {
+    calls++;
+    if (calls === 1) return { status: 429, headers: { 'retry-after': '1' }, body: { error: { message: 'slow down' } } };
+    return { status: 200, body: { candidates: [{ content: { parts: [{ text: '{"speech":true,"text":"fine"}' }] } }] } };
+  });
+  const startedAt = Date.now();
+  const result = await gemini.transcribe({ apiKey: 'k', model: 'slow-down-model', wav: validWav(), settings: { attempts: 2 } });
+  assert.strictEqual(result.ok, true);
+  assert.ok(Date.now() - startedAt >= 1000, 'the server asked for a second and got it: ' + (Date.now() - startedAt) + 'ms');
+  assert.strictEqual(calls, 2);
+});
+
+test('a server that comes back after two failures is believed', async () => {
+  const seen = [];
+  let calls = 0;
+  stubFetch(() => {
+    calls++;
+    if (calls <= 2) return { status: 503, body: { error: { message: 'overloaded' } } };
+    return { status: 200, body: { candidates: [{ content: { parts: [{ text: '{"speech":true,"text":"third time"}' }] } }] } };
+  });
+  const result = await gemini.transcribe({
+    apiKey: 'k', model: 'flaky-model', wav: validWav(), settings: { attempts: 3 },
+    onAttempt: (attempt, total) => seen.push(attempt + '/' + total)
+  });
+  assert.strictEqual(result.text, 'third time');
+  assert.deepStrictEqual(seen, ['2/3', '3/3'], 'the screen can say which attempt is running');
+});
+
+test('a request that says nothing useful is final', async () => {
+  let calls = 0;
+  stubFetch(() => {
+    calls++;
+    return { status: 400, body: { error: { message: 'Request contains an invalid argument.' } } };
+  });
+  const result = await gemini.transcribe({ apiKey: 'k', model: 'arg-model', wav: validWav(), settings: { attempts: 3 } });
+  assert.strictEqual(calls, 1, 'no degrade, no retry: nothing in the message names a feature we sent');
+  assert.strictEqual(result.errorKey, 'error.badRequest');
+});
+
+test('cancelling a transcription is not a failure', async () => {
+  const controller = new AbortController();
+  globalThis.fetch = (url, options) => new Promise((_, reject) => {
+    options.signal.addEventListener('abort', () => {
+      const err = new Error('aborted');
+      err.name = 'AbortError';
+      reject(err);
+    });
+  });
+  const pending = gemini.transcribe({ apiKey: 'k', model: 'cancel-model', wav: validWav(), settings: { attempts: 3 }, signal: controller.signal });
+  setTimeout(() => controller.abort(), 30);
+  const result = await pending;
+  assert.strictEqual(result.cancelled, true, 'the caller asked for this');
+  assert.strictEqual(result.ok, false);
+  assert.strictEqual(result.error === undefined || typeof result.error === 'string', true);
+});
+
+test('listModels drops what cannot transcribe, and reads every page', async () => {
+  const pages = [];
+  stubFetch((url) => {
+    pages.push(url);
+    if (pages.length === 1) {
+      return {
+        status: 200,
+        body: {
+          nextPageToken: 'page-2',
+          models: [
+            { name: 'models/gemini-2.5-flash', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/gemini-2.5-flash-preview-tts', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/imagen-3.0', supportedGenerationMethods: ['generateContent'] },
+            { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] }
+          ]
+        }
+      };
+    }
+    return {
+      status: 200,
+      body: { models: [{ name: 'models/gemini-2.5-pro', supportedGenerationMethods: ['generateContent'] }] }
+    };
+  });
+  const result = await gemini.listModels('k');
+  assert.strictEqual(result.ok, true);
+  assert.deepStrictEqual(result.models.map((m) => m.id), ['gemini-2.5-flash', 'gemini-2.5-pro'], 'no speech models, no image models, both pages');
+  assert.ok(/pageToken=page-2/.test(pages[1]), 'the second page was asked for: ' + pages[1]);
 });
 
 test('no user-visible string is hardcoded', () => {

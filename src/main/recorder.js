@@ -128,6 +128,9 @@ function stopRecording() {
   setPhase('transcribing');
   pushPanel();
   windows.sendToOverlay({ type: 'stop' });
+  /* A long recording idles the preconnected socket out; the request is about to
+   * need it again. */
+  gemini.warm();
   // The overlay always answers, but never hang the app if it cannot.
   watchdog = setTimeout(() => {
     if (state.phase === 'transcribing') fail('error.timeout');
@@ -232,6 +235,7 @@ function stopFromOverlay() {
   clearTimers();
   setPhase('transcribing');
   pushPanel();
+  gemini.warm();
   return { ok: true };
 }
 
