@@ -154,6 +154,21 @@ body[data-view='settings'] .view-settings {
 
 /* -------------------------------------------------------------- navbar --- */
 
+/* The window is dragged by the empty strip the window buttons live in, and by
+ * nothing else. With the whole header as a drag region, reaching for a control in
+ * it — the back chevron above all, which sits in the corner the buttons appear in
+ * — brought those buttons up instead and the click went to them. The strip sits
+ * above everything and holds nothing, so no control can be underneath it. */
+.titlebar-drag {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  z-index: 5;
+  -webkit-app-region: drag;
+}
+
 .navbar {
   position: relative;
   flex: 0 0 auto;
@@ -162,7 +177,6 @@ body[data-view='settings'] .view-settings {
   gap: var(--s2);
   min-height: 44px;
   padding: var(--s6) var(--s4) var(--s2);
-  -webkit-app-region: drag;
 }
 
 /* The window buttons appear over the top-left corner on hover. They get their own

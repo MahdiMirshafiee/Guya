@@ -49,7 +49,7 @@ function check(label, ok, detail) {
 
 const appLog = () => (fs.existsSync(LOG) ? fs.readFileSync(LOG, 'utf8') : '');
 
-/* A configured profile, so the app under test starts ready to dictate. */
+/* A configured profile, so the app under test starts ready to record. */
 function seedProfile() {
   fs.writeFileSync(
     path.join(PROFILE, 'settings.json'),
@@ -201,12 +201,17 @@ class Cdp {
   check('no transcript actions yet', await panel.eval(`document.getElementById('copyTranscript').hidden`));
 
   /* The graph is built at boot, so a start has nothing to wait for but the device
-   * itself. What must never happen at rest is a live microphone. */
-  const rest = await overlay.eval(`({
-    graphReady: !!audioCtx && audioCtx.state === 'running' && !!captureNode,
-    stream: stream === null,
-    source: sourceNode === null
-  })`);
+   * itself. What must never happen at rest is a live microphone. The graph is built
+   * asynchronously while the window loads, so this waits for it rather than
+   * sampling at whatever moment the first check happens to run. */
+  const rest = await waitFor(async () => {
+    const state = await overlay.eval(`({
+      graphReady: !!audioCtx && audioCtx.state === 'running' && !!captureNode,
+      stream: stream === null,
+      source: sourceNode === null
+    })`);
+    return state.graphReady || state.error ? state : null;
+  }, 8000, 'the audio graph');
   check('the microphone is closed at rest', rest.stream && rest.source, JSON.stringify(rest));
   check('and the audio graph is already built, so a start is immediate', rest.graphReady);
   check('nothing of the floating orb is on screen', (await overlay.eval(`document.getElementById('stage').dataset.state`)) === 'idle');
@@ -226,7 +231,7 @@ class Cdp {
   check('typing a key saves it without a Save button', stored === true, stored);
   await panel.eval(`document.getElementById('closeSettings').click()`);
   await sleep(300);
-  check('the recorder now invites a tap', /دیکته/.test(await el('status')), await el('status'));
+  check('the recorder now invites a tap', /ضبط/.test(await el('status')), await el('status'));
   await panel.eval(`document.getElementById('openSettings').click()`);
   await sleep(250);
   await panel.eval(`document.getElementById('closeSettings').click()`);
@@ -337,6 +342,29 @@ class Cdp {
   const leading = back.dir === 'rtl' ? back.navRight - back.right : back.left - back.navLeft;
   check('the back control sits on the leading edge', leading < 24, JSON.stringify(back));
   check('and below the band the window buttons use', !back.mac || back.top - back.navTop >= 30, JSON.stringify(back));
+
+  /* The window buttons appear when the pointer reaches the top of the window, so
+   * the top of the window has to hold nothing: a control up there summons them and
+   * the click goes to them. The strip is the only drag region, which is also what
+   * keeps the window draggable by its top edge. */
+  const chrome = await panel.eval(`(() => {
+    const strip = document.querySelector('.titlebar-drag');
+    const box = strip ? strip.getBoundingClientRect() : null;
+    const nav = document.querySelector('#view-settings .navbar');
+    const height = box ? box.height : 0;
+    const controls = Array.from(document.querySelectorAll('#view-settings button, #view-settings input, #view-settings select, #view-settings textarea, #view-settings [role="button"]'));
+    /* Only the ones on screen: a hidden control reports a rectangle at the origin,
+     * which would read as "in the strip" without being anywhere near it. */
+    const visible = controls.filter((c) => c.offsetParent !== null || c.getClientRects().length > 0);
+    return {
+      strip: Math.round(height),
+      controlsInStrip: visible.filter((c) => c.getBoundingClientRect().top < height).length,
+      dragRegion: getComputedStyle(nav).webkitAppRegion
+    };
+  })()`);
+  check('the window buttons get an empty strip of their own', chrome.strip >= 28, JSON.stringify(chrome));
+  check('nothing interactive sits in it', chrome.controlsInStrip === 0, JSON.stringify(chrome));
+  check('and the header is not a drag region that would summon them', chrome.dragRegion === 'none', chrome.dragRegion);
   check('the model picker is populated', (await panel.eval(`document.getElementById('modelSelect').options.length`)) > 1);
   check('the spoken-language picker is populated', (await panel.eval(`document.getElementById('language').options.length`)) > 5);
   check('the silence stop offers real choices', (await panel.eval(`document.getElementById('silenceStop').options.length`)) >= 4);

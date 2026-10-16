@@ -12,6 +12,8 @@
     <link rel="stylesheet" href="./form.css" />
   </head>
   <body data-view="recorder">
+    <!-- Where the window buttons appear; the window is dragged from here. -->
+    <div class="titlebar-drag"></div>
     <!-- Icon set (Lucide, MIT) -->
     <svg class="sprite" aria-hidden="true">
       <symbol id="i-mic" viewBox="0 0 24 24"><path d="M5 11a7 7 0 0 0 14 0" /><rect x="9" y="2.5" width="6" height="10" rx="3" /><path d="M12 18v3.5" /></symbol>
@@ -94,7 +96,7 @@
         </div>
         <p class="footnote" data-i18n="settings.engineFootnote"></p>
 
-        <h2 class="section-title" data-i18n="ui.dictation"></h2>
+        <h2 class="section-title" data-i18n="ui.recording"></h2>
         <div class="group">
           <div class="row">
             <span class="row-label" data-i18n="ui.shortcut"></span>

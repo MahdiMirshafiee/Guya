@@ -53,6 +53,11 @@ function createPanel() {
     show: false,
     title: 'Guya',
     icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
+    /* This window spends its life in the background — the shortcut works from any
+     * app — so the click that brings it forward is usually the click the user aimed
+     * at a control. Without this the first one only focused the window, and the
+     * control looked broken. */
+    acceptFirstMouse: true,
     // Real desktop material behind the page: macOS vibrancy, Windows acrylic.
     backgroundColor: IS_MAC ? '#00000000' : dark ? '#1c1c20' : '#f1f1f4',
     ...(IS_MAC ? { vibrancy: 'under-window', visualEffectState: 'followWindow' } : {}),
@@ -134,7 +139,7 @@ function createOverlay() {
     }
   });
 
-  // The overlay must never steal clicks from the app the user is dictating into.
+  // The overlay must never steal clicks from the app the user is speaking into.
   overlayWin.setIgnoreMouseEvents(true, { forward: true });
   overlayWin.setAlwaysOnTop(true, 'screen-saver');
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
