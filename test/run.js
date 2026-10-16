@@ -15,7 +15,17 @@ const Module = require('module');
 
 const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guya-test-'));
 const clipboardWrites = [];
+/* Stands in for the OS keychain: the point is that the file never holds the plain
+ * key when a service exists, not that this transform is strong. */
+const fakeSafeStorage = {
+  available: true,
+  isEncryptionAvailable: () => fakeSafeStorage.available,
+  encryptString: (text) => Buffer.from('enc:' + text, 'utf8'),
+  decryptString: (buffer) => buffer.toString('utf8').replace(/^enc:/, '')
+};
+
 const fakeElectron = {
+  safeStorage: fakeSafeStorage,
   app: {
     getPath: () => userDataDir,
     getVersion: () => '1.0.0',
@@ -456,8 +466,10 @@ test('uiLanguage only accepts fa or en', () => {
 test('update persists and reloads from disk', () => {
   store.update({ apiKey: '  key-123  ', model: 'gemini-2.5-pro' });
   const onDisk = JSON.parse(fs.readFileSync(store.path, 'utf8'));
-  assert.strictEqual(onDisk.apiKey, 'key-123', 'keys are trimmed');
   assert.strictEqual(onDisk.model, 'gemini-2.5-pro');
+  assert.strictEqual(store.read().apiKey, 'key-123', 'keys are trimmed');
+  /* Where the key itself lives is the next test's business; this one is the file. */
+  assert.strictEqual(typeof onDisk.apiKey, 'string');
 });
 
 test('bad values fall back to defaults', () => {
@@ -1129,7 +1141,7 @@ test('the system prompt is one precise English job description', () => {
    * in the audio can redirect the model. */
   const required = [
     ['verbatim', /verbatim/],
-    ['no commentary', /Return only the transcript/],
+    ['no commentary', /The transcript goes in the `text` field; nothing else is written/],
     ['keeps fillers and false starts', /filler words, repetitions, stutters and false starts/],
     ['never translates', /Never translate, never summarise, never answer/],
     ['each part in the language it was spoken in', /every part of the audio in the language it was spoken in/],
@@ -1433,6 +1445,61 @@ test('the store keeps a shortcut made of punctuation', () => {
   });
   assert.strictEqual(store.update({ shortcut: 'not a shortcut!' }).shortcut, 'Control+`', 'and nonsense does not');
   store.update({ shortcut: 'CommandOrControl+Shift+Space' });
+});
+
+test('the key is not written in the clear when the system can keep it', () => {
+  const file = store.path;
+  const saved = fs.readFileSync(file, 'utf8');
+
+  store.update({ apiKey: 'AIzaSy-a-real-looking-key' });
+  const onDisk = fs.readFileSync(file, 'utf8');
+  assert.strictEqual(onDisk.indexOf('AIzaSy-a-real-looking-key'), -1, 'the plain key is not in the file');
+  assert.ok(/"apiKeyEnc":\s*"/.test(onDisk), 'an encrypted field is: ' + onDisk.slice(0, 200));
+  assert.strictEqual(store.read().apiKey, 'AIzaSy-a-real-looking-key', 'and it reads back');
+
+  /* An install from before this carried the key in the clear: it still reads, and
+   * the next save writes it encrypted. */
+  const legacy = JSON.parse(onDisk);
+  delete legacy.apiKeyEnc;
+  legacy.apiKey = 'AIzaSy-from-the-old-file';
+  fs.writeFileSync(file, JSON.stringify(legacy));
+  const storePath = require.resolve('../src/main/store.js');
+  const cached = require.cache[storePath];
+  delete require.cache[storePath];
+  const reloaded = require(storePath);
+  assert.strictEqual(reloaded.read().apiKey, 'AIzaSy-from-the-old-file', 'the old key is not lost');
+  reloaded.update({ model: 'gemini-2.5-flash' });
+  assert.strictEqual(fs.readFileSync(file, 'utf8').indexOf('AIzaSy-from-the-old-file'), -1, 'and it is encrypted on the next save');
+
+  /* A system without an encryption service still gets a working app. */
+  fakeSafeStorage.available = false;
+  reloaded.update({ apiKey: 'AIzaSy-on-plain-linux' });
+  assert.ok(fs.readFileSync(file, 'utf8').indexOf('AIzaSy-on-plain-linux') !== -1, 'the key is kept, in the clear');
+  fakeSafeStorage.available = true;
+
+  fs.writeFileSync(file, saved);
+  if (cached) require.cache[storePath] = cached;
+  else delete require.cache[storePath];
+});
+
+test('a settings file that cannot be parsed is kept, not overwritten', () => {
+  const file = store.path;
+  const saved = fs.readFileSync(file, 'utf8');
+  const storePath = require.resolve('../src/main/store.js');
+  const cached = require.cache[storePath];
+
+  fs.writeFileSync(file, '{ this is not json');
+  delete require.cache[storePath];
+  const reloaded = require(storePath);
+  const settings = reloaded.read();
+  assert.strictEqual(settings.apiKey, '', 'the app starts on defaults rather than failing');
+  assert.ok(fs.existsSync(file + '.bad'), 'and the unreadable file is kept beside it');
+  assert.strictEqual(fs.readFileSync(file + '.bad', 'utf8'), '{ this is not json');
+
+  fs.rmSync(file + '.bad', { force: true });
+  fs.writeFileSync(file, saved);
+  if (cached) require.cache[storePath] = cached;
+  else delete require.cache[storePath];
 });
 
 /* ------------------------------------------------------------- finish ---- */

@@ -39,7 +39,9 @@ function register() {
     const clean = Object.assign({}, patch || {});
 
     let next = store.update(clean);
-    let warningKey = '';
+    /* A save that did not reach the disk is not a save: the window says so rather
+     * than showing a value that will be gone at the next launch. */
+    let warningKey = next.ok === false ? 'error.unexpected' : '';
     let pasteBlocked = false;
 
     /* Typing into another app is gated by the system: without its permission the

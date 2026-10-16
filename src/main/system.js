@@ -44,8 +44,10 @@ const LINUX_TOOLS = [
 ];
 
 function commandExists(command) {
-  const path = process.env.PATH || '';
-  return path.split(':').some((dir) => {
+  /* The environment variable must not be called `path`: it shadowed the module, so
+   * `path.join` threw inside the try and every command was reported as missing —
+   * which is how a Linux install with xdotool never got automatic paste. */
+  return (process.env.PATH || '').split(path.delimiter).some((dir) => {
     if (!dir) return false;
     try {
       fs.accessSync(path.join(dir, command), fs.constants.X_OK);

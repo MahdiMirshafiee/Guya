@@ -67,6 +67,9 @@ function currentModel() {
   return F.modelSelect.value || settings.model;
 }
 
+/* The interface language re-draws every screen, so the values still sitting in the
+ * fields travel with it — they are about to be re-read from the settings anyway. This
+ * is the only caller: every other control sends what it changed and nothing else. */
 function currentFormPatch() {
   return {
     apiKey: F.apiKey.value.trim(),
@@ -212,8 +215,11 @@ function renderShortcut() {
 
 /* Called by the shell (which loads first) through window.__repaintSettings. */
 function repaintSettings() {
-  F.apiKey.value = settings.apiKey || '';
-  F.prompt.value = settings.prompt || '';
+  /* A field the user is typing in is theirs: a state push must not overwrite it
+   * while a save is in flight. */
+  const focused = document.activeElement;
+  if (focused !== F.apiKey) F.apiKey.value = settings.apiKey || '';
+  if (focused !== F.prompt) F.prompt.value = settings.prompt || '';
   F.copyToClipboard.checked = !!settings.copyToClipboard;
   F.pasteAfterTranscribe.checked = !!settings.pasteAfterTranscribe;
   F.launchAtLogin.checked = !!settings.launchAtLogin;
@@ -277,7 +283,7 @@ function watchForPastePermission() {
     stopPasteWatch();
     showPasteNotice(true);
     F.pasteAfterTranscribe.checked = true;
-    await saveAndRepaint();
+    await saveAndRepaint({ pasteAfterTranscribe: true });
   }, 1500);
 }
 
@@ -291,7 +297,7 @@ async function askForPastePermission() {
   if (result.granted) {
     showPasteNotice(true);
     F.pasteAfterTranscribe.checked = true;
-    await saveAndRepaint();
+    await saveAndRepaint({ pasteAfterTranscribe: true });
     hidePasteNotice();
     return;
   }
@@ -300,6 +306,12 @@ async function askForPastePermission() {
 }
 
 /* --------------------------------------------------------------- actions --- */
+
+/* Only what changed travels: sending the whole form meant a save triggered by one
+ * control carried every field, including a prompt the user was still typing. */
+async function savePatch(patch) {
+  return saveAndRepaint(patch);
+}
 
 async function saveAndRepaint(patch) {
   const response = await saveSettings(patch);
@@ -374,7 +386,7 @@ function onShortcutKeyDown(event) {
   if (result.accelerator) {
     shortcutDraft = result.accelerator;
     endShortcutCapture();
-    saveAndRepaint();
+    saveAndRepaint({ shortcut: result.accelerator });
   }
 }
 
@@ -384,10 +396,11 @@ function on(node, event, handler) {
   node.addEventListener(event, handler);
 }
 
-/* Text fields commit when the user is done with them, never mid-keystroke. */
-function commitOnBlur(input, after) {
+/* Text fields commit when the user is done with them, never mid-keystroke, and they
+ * commit only themselves: the form is not a document to be re-sent on every edit. */
+function commitOnBlur(input, after, patchOf) {
   on(input, 'blur', async () => {
-    await saveAndRepaint();
+    await saveAndRepaint(patchOf ? patchOf() : undefined);
     if (after) after();
   });
   on(input, 'keydown', (event) => {
@@ -403,9 +416,9 @@ function initSettings() {
     F.toggleKey.setAttribute('aria-label', hidden ? t('ui.hideKey') : t('ui.showKey'));
   });
 
-  commitOnBlur(F.apiKey, checkKey);
-  commitOnBlur(F.prompt);
-  commitOnBlur(F.modelCustom, renderModels);
+  commitOnBlur(F.apiKey, checkKey, () => ({ apiKey: F.apiKey.value.trim() }));
+  commitOnBlur(F.prompt, null, () => ({ prompt: F.prompt.value }));
+  commitOnBlur(F.modelCustom, renderModels, () => ({ model: currentModel() }));
 
   /* The field starts as the app's own instructions, and this is how they come back
    * after an edit — otherwise a deleted sentence would be gone for good. */
@@ -414,26 +427,27 @@ function initSettings() {
     await saveAndRepaint({ prompt: F.prompt.value });
   });
 
-  on(F.language, 'change', () => saveAndRepaint());
+  on(F.language, 'change', () => saveAndRepaint({ language: F.language.value }));
   on(F.silenceStop, 'change', () => {
     const isCustom = F.silenceStop.value === CUSTOM_MODEL;
     F.silenceCustom.hidden = !isCustom;
     F.silenceUnit.hidden = !isCustom;
     if (isCustom) F.silenceCustom.focus();
-    else saveAndRepaint();
+    else saveAndRepaint({ silenceStopMs: Number(F.silenceStop.value) });
   });
   on(F.noSpeechStop, 'change', () => {
     const isCustom = F.noSpeechStop.value === CUSTOM_MODEL;
     F.noSpeechCustom.hidden = !isCustom;
     F.noSpeechUnit.hidden = !isCustom;
     if (isCustom) F.noSpeechCustom.focus();
-    else saveAndRepaint();
+    else saveAndRepaint({ noSpeechStopMs: Number(F.noSpeechStop.value) });
   });
-  commitOnBlur(F.silenceCustom, () => saveAndRepaint());
-  commitOnBlur(F.noSpeechCustom, () => saveAndRepaint());
-  on(F.attempts, 'change', () => saveAndRepaint());
+  commitOnBlur(F.silenceCustom, () => saveAndRepaint({ silenceStopMs: durationValue(F.silenceStop, F.silenceCustom) }));
+  commitOnBlur(F.noSpeechCustom, () => saveAndRepaint({ noSpeechStopMs: durationValue(F.noSpeechStop, F.noSpeechCustom) }));
+  on(F.attempts, 'change', () => saveAndRepaint({ attempts: Number(F.attempts.value) }));
   on(F.uiLanguageSelect, 'change', async () => {
     await saveSettings(Object.assign(currentFormPatch(), { uiLanguage: F.uiLanguageSelect.value }));
+    shortcutDraft = '';
     const info = await api.getAppInfo();
     settings = info.settings;
     appState = info.state;
@@ -448,7 +462,7 @@ function initSettings() {
       return;
     }
     F.modelCustom.hidden = true;
-    saveAndRepaint();
+    saveAndRepaint({ model: F.modelSelect.value });
   });
 
   on(F.shortcut, 'focus', beginShortcutCapture);
@@ -473,7 +487,7 @@ function initSettings() {
           return;
         }
       }
-      await saveAndRepaint();
+      await saveAndRepaint({ pasteAfterTranscribe: F.pasteAfterTranscribe.checked });
     } catch (_) {
       F.pasteAfterTranscribe.checked = !!settings.pasteAfterTranscribe;
       setFormStatus('error.unexpected', 'error');
@@ -486,9 +500,8 @@ function initSettings() {
   });
   on(F.askAccessibility, 'click', askForPastePermission);
 
-  [F.copyToClipboard, F.launchAtLogin].forEach((input) => {
-    on(input, 'change', () => saveAndRepaint());
-  });
+  on(F.copyToClipboard, 'change', () => saveAndRepaint({ copyToClipboard: F.copyToClipboard.checked }));
+  on(F.launchAtLogin, 'change', () => saveAndRepaint({ launchAtLogin: F.launchAtLogin.checked }));
 
   // Seed the picker with the curated suggestions; "Refresh models" replaces them
   // with what the key can actually use.
@@ -521,7 +534,7 @@ window.__refreshSettings = async function refreshSettings() {
   if (settings.pasteAfterTranscribe) {
     // The permission was revoked in System Settings: the setting cannot stand.
     F.pasteAfterTranscribe.checked = false;
-    await saveAndRepaint();
+    await saveAndRepaint({ pasteAfterTranscribe: false });
   }
   if (!F.pasteNotice.hidden) watchForPastePermission();
 };

@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { app } = require('electron');
+const { app, safeStorage } = require('electron');
 const { DEFAULTS, ATTEMPT_CHOICES } = require('../shared/defaults');
 const { LANGUAGES: SPOKEN_LANGUAGES, LEGACY_PROMPTS } = require('../shared/i18n');
 const { DEFAULT_PROMPT, PROMPT_REVISION } = require('../shared/prompt');
@@ -103,16 +103,61 @@ function seedPrompt() {
   }
 }
 
+/* The API key is the user's, and a settings file is a plain text file: it is written
+ * encrypted whenever the system offers an encryption service (the login keychain on
+ * macOS, DPAPI on Windows), and read back from either form. A system that offers none
+ * — some Linux sessions — keeps the plain field, because the alternative is an app
+ * that cannot hold a key at all. */
+function decryptKey(raw) {
+  if (typeof raw.apiKeyEnc === 'string' && raw.apiKeyEnc && safeStorage && safeStorage.isEncryptionAvailable()) {
+    try {
+      return safeStorage.decryptString(Buffer.from(raw.apiKeyEnc, 'base64'));
+    } catch (err) {
+      console.warn('[store] could not read the saved key:', err.message);
+    }
+  }
+  return null;
+}
+
 function read() {
   if (cache) return cache;
   migrateLegacy();
+  let raw = null;
   try {
-    cache = sanitize(JSON.parse(fs.readFileSync(FILE, 'utf8')), DEFAULTS);
+    raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
   } catch (err) {
-    cache = Object.assign({}, DEFAULTS);
+    /* A corrupt file is kept rather than overwritten: it holds a key the user would
+     * otherwise have to find again. */
+    if (err && err.code !== 'ENOENT') {
+      try {
+        fs.renameSync(FILE, FILE + '.bad');
+        console.error('[store] settings could not be read; the old file is at', FILE + '.bad');
+      } catch (_) {
+        /* nothing more to do */
+      }
+    }
+  }
+  cache = sanitize(raw, DEFAULTS);
+  if (raw) {
+    const decrypted = decryptKey(raw);
+    if (decrypted !== null) cache.apiKey = decrypted;
   }
   seedPrompt();
   return cache;
+}
+
+/* The field is only written in the clear when there is no encryption to be had. */
+function serializable(settings) {
+  const out = Object.assign({}, settings);
+  if (out.apiKey && safeStorage && safeStorage.isEncryptionAvailable()) {
+    try {
+      out.apiKeyEnc = safeStorage.encryptString(out.apiKey).toString('base64');
+      out.apiKey = '';
+    } catch (err) {
+      console.warn('[store] could not encrypt the key:', err.message);
+    }
+  }
+  return out;
 }
 
 function write(next) {
@@ -120,17 +165,22 @@ function write(next) {
   const tmp = FILE + '.tmp';
   try {
     fs.mkdirSync(path.dirname(FILE), { recursive: true });
-    fs.writeFileSync(tmp, JSON.stringify(cache, null, 2), { mode: 0o600 });
+    fs.writeFileSync(tmp, JSON.stringify(serializable(cache), null, 2), { mode: 0o600 });
     fs.renameSync(tmp, FILE);
+    return { ok: true, settings: cache };
   } catch (err) {
     console.error('[store] could not save settings:', err.message);
+    return { ok: false, settings: cache, errorKey: 'error.unexpected' };
   }
-  return cache;
 }
 
-/* Merges a partial update and persists it. */
+/* Merges a partial update and persists it. Returns the settings, so an existing
+ * caller keeps working; `update.ok` says whether it reached the disk. */
 function update(partial) {
-  return write(Object.assign({}, read(), partial || {}));
+  const result = write(Object.assign({}, read(), partial || {}));
+  const settings = result.settings;
+  settings.ok = result.ok;
+  return settings;
 }
 
 module.exports = { read, update, path: FILE };

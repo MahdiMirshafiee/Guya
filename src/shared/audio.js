@@ -51,31 +51,6 @@
     return out;
   }
 
-  /* One-pole high-pass used to remove DC offset and low rumble. Kept as a
-   * utility, but deliberately not part of the capture path: starting the filter
-   * from zero adds a short transient that overshoots the input by ~5% on the
-   * first milliseconds, and untouched audio transcribes better. */
-  function highPass(input, sampleRate, cutoff) {
-    if (!input.length) return input;
-    cutoff = cutoff || 70;
-    var dt = 1 / sampleRate;
-    var rc = 1 / (2 * Math.PI * cutoff);
-    var alpha = rc / (rc + dt);
-    var out = new Float32Array(input.length);
-    var prevIn = input[0];
-    var prevOut = 0;
-    for (var i = 0; i < input.length; i++) {
-      var x = input[i];
-      var y = alpha * (prevOut + x - prevIn);
-      out[i] = y;
-      prevIn = x;
-      prevOut = y;
-    }
-    return out;
-  }
-
-  /* Linear resampling. Speech transcription at 16 kHz does not need anything
-   * fancier, and this stays dependency-free on every platform. */
   function resample(input, inputRate, outputRate) {
     if (inputRate === outputRate || input.length === 0) return input;
     var ratio = inputRate / outputRate;
@@ -359,7 +334,6 @@
     createBandNormalizer: createBandNormalizer,
     floatToInt16: floatToInt16,
     concatFloat32: concatFloat32,
-    highPass: highPass,
     resample: resample,
     msToTargetRate: msToTargetRate,
     encodeWav: encodeWav,
