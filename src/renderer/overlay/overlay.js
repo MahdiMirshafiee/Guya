@@ -52,16 +52,21 @@ let silenceStopMs = DEFAULT_SILENCE_STOP_MS;
 let lastVoiceAt = 0;
 let voiceMs = 0;
 
-/* Rolling noise floor, so the silence detector adapts to the room instead of
- * relying on one hard-coded level. */
-const noiseFloor = {
-  value: 0.004,
+/* Is this the room, or is this someone talking?
+ *
+ * A quiet room and a voice differ by a factor of six in level and by nothing at
+ * all in zero-crossing rate or in how much the level moves — both were measured —
+ * so the level is what this uses, against a floor that sits between them and rises
+ * in a room that is loud all by itself. What was actually said, and whether
+ * anything was, is still the model's answer to give: this decides only whether the
+ * recording is worth asking about, and whether the room has gone quiet. */
+const room = {
+  quiet: GuyaAudio.SPEECH_RMS_FLOOR,
   update(rms) {
-    if (rms < this.value) this.value = rms;
-    else this.value += (rms - this.value) * 0.0008;
+    if (rms < this.quiet) this.quiet = rms;
   },
-  gate() {
-    return Math.max(0.01, this.value * 3);
+  level() {
+    return GuyaAudio.speechLevel(this.quiet);
   }
 };
 
@@ -122,8 +127,8 @@ function setState(name, text) {
  * same samples, and the samples themselves are kept only while capturing. */
 function onChunk(chunk) {
   const rms = GuyaAudio.rms(chunk);
-  noiseFloor.update(rms);
-  const speaking = rms > noiseFloor.gate();
+  room.update(rms);
+  const speaking = rms > room.level();
 
   if (capturing) {
     /* How much of this recording was actually someone talking: the main process
@@ -155,16 +160,7 @@ async function openMic() {
 
   let opened;
   try {
-    // The raw signal: noise suppression and automatic gain both chew on quiet
-    // speech, and this audio is going to a model, not to a phone call.
-    opened = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false
-      }
-    });
+    opened = await navigator.mediaDevices.getUserMedia({ audio: GuyaAudio.MIC_CONSTRAINTS });
   } catch (err) {
     reportFailure(err);
     return false;

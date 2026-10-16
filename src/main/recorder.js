@@ -14,10 +14,15 @@ const { state, setPhase, publicState, pushPanel } = require('./state');
 const { MAX_RECORDING_MS } = require('../shared/defaults');
 
 const MIN_AUDIO_SECONDS = 0.35;
-/* How much of the recording has to have been above the room's noise floor before
- * it is worth asking a model about. Half a second of speech is a word or two —
- * "okay stop" — and anything under it is a breath, a click or the room itself. */
-const MIN_VOICE_MS = 500;
+/* How much of the recording has to have been above the room's own level before it
+ * is worth asking a model about, in two parts: enough of it in total to be a word
+ * or two, and enough of it in proportion to be speech rather than a door closing.
+ * The proportion is what a single bang in an otherwise silent recording fails.
+ * Deliberately generous — refusing a real recording is worse than the occasional
+ * quiet one reaching the provider, which is why the model is also asked whether it
+ * heard anything. */
+const MIN_VOICE_MS = 300;
+const MIN_SPEECH_RATIO = 0.12;
 
 let startTimer = null; // the microphone never confirmed
 let maxTimer = null; // a recording that ran too long
@@ -149,11 +154,16 @@ async function handleAudioResult(wav, durationMs, voiceMs) {
 
   /* A recording of a quiet room is not a question, and a model asked to transcribe
    * one will answer with something plausible instead — a greeting, a thank-you, a
-   * sentence nobody said. So it never gets asked: the overlay measures how much of
-   * the recording was above the room's own noise floor, and below this there is
-   * nothing to transcribe. Silence is a result, not a failure to hide. */
+   * sentence nobody said, in a language nobody spoke. So it never gets asked: the
+   * overlay measures how much of the recording was above the room's own level, and
+   * below these two thresholds there is nothing to transcribe. Silence is a result,
+   * not a failure to hide. */
   const spoken = Number.isFinite(voiceMs) ? voiceMs : durationMs;
-  if (spoken < MIN_VOICE_MS) return fail('error.noSpeech');
+  const ratio = durationMs > 0 ? spoken / durationMs : 1;
+  if (process.env.GUYA_DEBUG) {
+    console.log(`[guya] recording: ${Math.round(durationMs)}ms, ${Math.round(spoken)}ms above the room (${Math.round(ratio * 100)}%)`);
+  }
+  if (spoken < MIN_VOICE_MS || ratio < MIN_SPEECH_RATIO) return fail('error.noSpeech');
 
   const result = await gemini.transcribe({
     apiKey: settings.apiKey,

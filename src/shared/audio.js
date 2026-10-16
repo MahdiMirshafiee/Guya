@@ -11,6 +11,23 @@
 
   var TARGET_RATE = 16000;
 
+  /* What to ask the microphone for.
+   *
+   * Echo cancellation stays off: it selects the system's voice-processing unit,
+   * which is built for calls and gates quiet speech. Everything else is left at the
+   * platform's default, and that is deliberate — measured on this machine with
+   * speech playing, the raw signal arrives at about a fourteenth of the level the
+   * platform's automatic gain produces (0.009 against 0.128 RMS), which is quiet
+   * enough that speech stops being recognisable as speech at all. A dictation app
+   * that hears nothing is worse than one that hears a processed voice. */
+  var MIC_CONSTRAINTS = {
+    channelCount: 1,
+    echoCancellation: false,
+    noiseSuppression: true,
+    autoGainControl: true
+  };
+
+  /* A band level for every bar in the meter, 0-1. */
   function floatToInt16(input) {
     var out = new Int16Array(input.length);
     for (var i = 0; i < input.length; i++) {
@@ -169,6 +186,27 @@
     return out;
   }
 
+  /* ------------------------------------------------------------ speaking --- */
+
+  /* How loud something has to be to count as speech, given how quiet the room
+   * gets. Measured on this machine with the platform's gain doing its work, over
+   * eight seconds of each:
+   *
+   *   a quiet room   RMS mean 0.0024, 90th percentile 0.0052
+   *   someone talking  RMS mean 0.0145, 90th percentile 0.0431
+   *
+   * So the level separates them cleanly and the obvious alternatives do not: the
+   * zero-crossing rate was 0.064 against 0.089, and the frame-to-frame spread 0.69
+   * against 0.78 — both useless, which is why this is measured rather than tuned by
+   * ear. The floor sits above the room and well below a voice; the multiplier
+   * raises it in a room that is simply loud, where the quiet level it tracks is
+   * high too. */
+  var SPEECH_RMS_FLOOR = 0.008;
+
+  function speechLevel(roomQuiet) {
+    return Math.max(SPEECH_RMS_FLOOR, (roomQuiet || 0) * 4);
+  }
+
   /* One band per cloud in the orb: the same measurement, folded into the ranges
    * the sphere's colours are driven by. The band indices come from the same edges
    * `spectrum` used, so the two stay aligned whatever the context's rate is —
@@ -189,6 +227,9 @@
 
   return {
     TARGET_RATE: TARGET_RATE,
+    MIC_CONSTRAINTS: MIC_CONSTRAINTS,
+    SPEECH_RMS_FLOOR: SPEECH_RMS_FLOOR,
+    speechLevel: speechLevel,
     SPECTRUM_LOW_HZ: SPECTRUM_LOW_HZ,
     SPECTRUM_HIGH_HZ: SPECTRUM_HIGH_HZ,
     floatToInt16: floatToInt16,
