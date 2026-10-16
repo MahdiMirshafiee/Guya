@@ -154,8 +154,8 @@
     'status.saveToApply': { fa: 'برای اعمال، «ذخیره» را بزنید.', en: 'Press Save to apply.' },
     'status.copied': { fa: 'کپی شد.', en: 'Copied.' },
     'settings.engineFootnote': {
-      fa: 'صدا با کلید خودتان به API جمنای فرستاده و متن برگردانده می‌شود. Guya سرور خودش را ندارد.',
-      en: 'Audio is uploaded to the Gemini API and the transcript is returned. Guya has no server of its own.'
+      fa: 'صدا با کلید خودتان به API جمنای فرستاده و متن برگردانده می‌شود. Guya سرور خودش را ندارد. مدل‌های flash-lite سریع‌ترند و flash برای فارسی دقیق‌تر.',
+      en: 'Audio is uploaded to the Gemini API and the transcript is returned. Guya has no server of its own. flash-lite is faster; flash is more accurate for Persian.'
     },
     'settings.promptFootnote': {
       fa: 'همین متن با هر ضبط به مدل فرستاده می‌شود. انگلیسی است و می‌توانید عوضش کنید.',
