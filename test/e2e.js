@@ -499,6 +499,17 @@ class Cdp {
   check('every group has a title and most have a footnote', (await panel.eval(`document.querySelectorAll('.section-title').length`)) >= 4 && (await panel.eval(`document.querySelectorAll('.footnote').length`)) >= 3);
   check('no wake-word setting exists any more', (await panel.eval(`document.querySelectorAll('#wakeEnabled,#wakeWord').length`)) === 0);
 
+  /* Closing the window hides it — the shortcut has to outlive the window — so the app needs
+   * a control that really quits it. Where there is no menu bar that control is the only way
+   * out, and a missing element or a raw i18n key is a user who cannot close the app. */
+  const quit = await panel.eval(`(() => {
+    const row = document.getElementById('quitFootnote');
+    const button = document.getElementById('quitApp');
+    return row && button ? { hidden: row.hidden, label: button.textContent.trim(), mac: guya.platform === 'darwin' } : null;
+  })()`);
+  check('the quit control exists and has a label', !!quit && quit.label.length > 0 && !/^ui\./.test(quit.label), JSON.stringify(quit));
+  check('and it stays out of the way where the menu already quits', !!quit && quit.hidden === quit.mac, JSON.stringify(quit));
+
   /* Automatic paste needs a system permission. Without it the switch must refuse
    * to stay on, and the form must say so and offer the pane. */
   const permission = await panel.eval('guya.accessibilityStatus()');
