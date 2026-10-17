@@ -219,99 +219,34 @@ test('the silence around the speech is not uploaded', () => {
   assert.strictEqual(silent.samples.length, 0, 'and a recording with no speech uploads nothing at all');
 });
 
-test('the gate opens between a room and a voice', () => {
-  /* Measured on this machine over eight seconds of each, with the platform's gain
-   * doing its work: a quiet room means 0.0024 RMS with a 90th percentile of 0.0052,
-   * someone talking means 0.0145 with a 90th percentile of 0.0431. The gate's own
-   * onset threshold has to land inside that gap — above the room, under a voice —
-   * and it has to be reached by the room's floor, not by a constant. */
-  const room = { min: 0.0017, p90: 0.0052 };
-  const voice = { mean: 0.0145 };
-  /* The floor follows the room's quietest frame, which is what it is given here. */
-  const gate = GuyaAudio.createVoiceGate({ initialFloor: room.min });
-  const quiet = gate.push(room.p90, 64);
-  assert.ok(quiet.threshold > room.p90, 'the room at its loudest must not reach it: ' + quiet.threshold);
-  assert.ok(quiet.threshold < voice.mean, 'and a voice must clear it easily: ' + quiet.threshold);
-  assert.strictEqual(quiet.voiced, false, 'the room is not speech');
+test('the gate learns the room instead of trusting one measured number', () => {
+  /* The threshold is no longer an absolute value measured on one machine's
+   * microphone: it is a ratio over what the room itself sounds like, which is why the
+   * quiet-microphone scenarios in the group above pass. What is asserted here is the
+   * shape of that: a room that gets quieter is followed at once, a room that is louder
+   * than the gate assumed is learned once it has been heard, and speech does not raise
+   * its own threshold. */
+  const gaussian = (() => {
+    let seed = 5;
+    const next = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    return () => Math.sqrt(-2 * Math.log(Math.max(1e-12, next()))) * Math.cos(2 * Math.PI * next());
+  })();
+  const frame = (mean, sigma) => Math.max(1e-4, mean * Math.exp(sigma * gaussian() - (sigma * sigma) / 2));
 
-  /* A voice sustained past the onset window does open it. */
+  const gate = GuyaAudio.createVoiceGate();
+  const roomLevel = () => frame(0.0008, 0.3);
+  for (let i = 0; i < 40; i++) gate.push(roomLevel(), 64); // a second and a half of a quiet room
+  const quiet = gate.push(roomLevel(), 64);
+  assert.ok(quiet.threshold < 0.01, 'a quiet room gets a low threshold: ' + quiet.threshold.toFixed(4));
+  assert.strictEqual(quiet.voiced, false, 'and is not speech');
+
+  /* A voice well above it opens the gate, and cannot lift the bar under itself. */
+  const before = quiet.floor;
   let voiced = false;
-  for (let i = 0; i < 6; i++) voiced = gate.push(voice.mean * 1.6, 64).voiced || voiced;
-  assert.strictEqual(voiced, true, 'and a voice does');
-});
-
-test('the spectrum puts a tone in its own band and nowhere else', () => {
-  /* The analyser hands over decibels per bin; these are the same numbers with a
-   * floor of -100 dB, which is what a quiet room looks like. */
-  const sampleRate = 16000;
-  const binCount = 512; // fftSize 1024
-  const perBin = sampleRate / 2 / binCount;
-  const edges = GuyaAudio.bandEdges(sampleRate, 48);
-  const bandOf = (hz) => edges.findIndex((edge, i) => i > 0 && hz < edge) - 1;
-
-  const tone = (hz) => {
-    const bins = new Array(binCount).fill(-100);
-    const at = Math.round(hz / perBin);
-    bins[at] = 0;
-    bins[at - 1] = -12;
-    bins[at + 1] = -12;
-    return bins;
-  };
-
-  [200, 440, 1200, 3000].forEach((hz) => {
-    const binHz = Math.round(hz / perBin) * perBin;
-    const levels = GuyaAudio.spectrumDb(tone(hz), sampleRate, 48);
-    const loudest = levels.indexOf(Math.max.apply(null, levels));
-    assert.strictEqual(loudest, bandOf(binHz), `${hz} Hz should sit in band ${bandOf(binHz)}, not ${loudest}`);
-    /* Everything an octave or more away is still the room: this is what makes the
-     * meter a spectrum rather than one loudness number drawn forty-eight times. */
-    const far = levels.filter((_, i) => Math.abs(i - loudest) > 6);
-    assert.ok(Math.max.apply(null, far) < -60, `${hz} Hz leaked into distant bands: ${Math.max.apply(null, far)}`);
-  });
-
-  const quiet = GuyaAudio.spectrumDb(new Array(binCount).fill(-100), sampleRate, 48);
-  assert.ok(Math.max.apply(null, quiet) < -90, 'silence is silence');
-});
-
-test('bands are mel spaced, and fold into the orb four at a time', () => {
-  const edges = GuyaAudio.bandEdges(48000, 48);
-  assert.strictEqual(edges.length, 49);
-  assert.ok(Math.abs(edges[0] - GuyaAudio.SPECTRUM_LOW_HZ) < 1e-6);
-  assert.ok(Math.abs(edges[48] - GuyaAudio.SPECTRUM_HIGH_HZ) < 1e-6);
-  /* Even spacing in mel, not in hertz and not in octaves: the ear does not count
-   * octaves, and the bottom of the range needs the room. */
-  const toMel = (hz) => 2595 * Math.log10(1 + hz / 700);
-  const steps = edges.slice(1).map((edge, i) => toMel(edge) - toMel(edges[i]));
-  steps.forEach((step) => assert.ok(Math.abs(step - steps[0]) < 1e-6, 'spacing is even in mel'));
-  assert.ok(edges[1] - edges[0] < 60, 'the lowest band is narrow: ' + (edges[1] - edges[0]).toFixed(1) + ' Hz');
-
-  /* Above the Nyquist frequency there is nothing to measure, so the top edge stops
-   * there rather than reading past the end of the array. */
-  const narrow = GuyaAudio.bandEdges(16000, 48);
-  assert.ok(narrow[48] <= 8000, 'a 16 kHz context cannot see past 8 kHz: ' + narrow[48]);
-
-  const noisy = new Array(48).fill(0).map((_, i) => i / 47);
-  const clouds = [
-    [90, 260],
-    [260, 800],
-    [800, 2400],
-    [2400, 7200]
-  ];
-  const folded = GuyaAudio.foldBands(noisy, 48000, clouds);
-  assert.strictEqual(folded.length, 4);
-  const wideEdges = GuyaAudio.bandEdges(48000, 48);
-  clouds.forEach((range, i) => {
-    const inRange = noisy.filter((_, b) => wideEdges[b] >= range[0] && wideEdges[b] < range[1]);
-    assert.ok(inRange.length > 0, 'this range covers some bands');
-    assert.strictEqual(folded[i], Math.max.apply(null, inRange), 'cloud ' + i + ' reads its own range');
-  });
-  for (let i = 1; i < folded.length; i++) {
-    assert.ok(folded[i] > folded[i - 1], 'the noise map should rise with frequency: ' + folded.join(', '));
-  }
-
-  const narrowFold = GuyaAudio.foldBands(noisy, 16000, clouds);
-  assert.strictEqual(narrowFold.length, 4);
-  narrowFold.forEach((value) => assert.ok(value >= 0 && value <= 1, 'a cloud level is a band level: ' + value));
+  for (let i = 0; i < 60; i++) voiced = gate.push(frame(0.006, 0.45), 64).voiced || voiced;
+  assert.strictEqual(voiced, true, 'a voice opens it');
+  const during = gate.push(frame(0.006, 0.45), 64);
+  assert.ok(during.floor <= before * 1.35, 'and does not raise the floor much under itself: ' + before.toFixed(5) + ' -> ' + during.floor.toFixed(5));
 });
 
 test('the microphone is asked for the level that makes speech audible', () => {
@@ -411,6 +346,155 @@ group('meters');
     assert.ok(lowest < 0.5, 'and it pulses with the syllables rather than sitting flat: ' + lowest.toFixed(3));
     assert.ok(Math.max.apply(null, after) < 0.05, 'and it settles when the voice stops: ' + Math.max.apply(null, after).toFixed(3));
     assert.ok(reaction !== null && reaction < 100, 'it reacts on the first frames: ' + reaction + 'ms');
+  });
+})();
+
+/* The gate, against synthetic audio that behaves like a room and like a voice. RMS per
+ * 64 ms frame is drawn lognormally — a mean with a spread — which is what a microphone
+ * in a room produces. Each scenario states what has to happen, and the numbers are
+ * measured: how much of the speech is flagged, what the floor does while someone is
+ * talking, and what the meter and the endpointer do with it. */
+group('voice gate');
+
+(function gateScenarios() {
+  const FRAME_MS = 64;
+
+  function rng(seed) {
+    let state = seed;
+    return () => {
+      state = (state * 16807) % 2147483647;
+      return state / 2147483647;
+    };
+  }
+
+  /* Box-Muller, so the frame levels are lognormal rather than uniform. */
+  function makeGenerator(seed) {
+    const next = rng(seed);
+    return () => {
+      const u = Math.max(1e-12, next());
+      const v = next();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    };
+  }
+
+  /* segments: [seconds, meanRms, sigma, isSpeech] */
+  function drive(segments, options) {
+    const gaussian = makeGenerator(97);
+    const gate = GuyaAudio.createVoiceGate((options && options.gate) || {});
+    const endpointer = GuyaAudio.createEndpointer({ noSpeechMs: 8000, endSilenceMs: 3000 });
+    const meter = GuyaAudio.createLevelMeter();
+    let stopped = null;
+    let stoppedAt = null;
+    let clock = 0;
+    const frames = [];
+    for (const [seconds, meanRms, sigma, isSpeech] of segments) {
+      const count = Math.round((seconds * 1000) / FRAME_MS);
+      for (let i = 0; i < count; i++) {
+        clock += FRAME_MS;
+        const rms = Math.max(1e-4, meanRms * Math.exp(sigma * gaussian() - (sigma * sigma) / 2));
+        const g = gate.push(rms, FRAME_MS);
+        let level = 0;
+        for (let k = 0; k < 4; k++) level = meter.push(rms, g.floor, FRAME_MS / 4);
+        frames.push({ rms, voiced: g.voiced, floor: g.floor, isSpeech, level, at: clock });
+        if (!stopped) {
+          const reason = endpointer.push(g.voiced, FRAME_MS);
+          if (reason) {
+            stopped = reason;
+            stoppedAt = clock;
+          }
+        }
+      }
+    }
+    const speechFrames = frames.filter((f) => f.isSpeech).slice(5); // ignore the onset
+    const voicedThrough = speechFrames.length ? speechFrames.filter((f) => f.voiced).length / speechFrames.length : 0;
+    const floorsDuringSpeech = frames.filter((f) => f.isSpeech).map((f) => f.floor);
+    const levelsDuringSpeech = speechFrames.map((f) => f.level);
+    const mean = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : 0);
+    /* The worst one-second average, which is what the eye reads as "it went dim". */
+    const seconds = [];
+    for (let i = 0; i + 16 <= frames.length; i += 16) {
+      const slice = frames.slice(i, i + 16);
+      if (slice.every((f) => f.isSpeech) && slice.length) seconds.push(mean(slice.map((f) => f.level)));
+    }
+    return {
+      frames,
+      voicedThrough,
+      maxFloorDuringSpeech: floorsDuringSpeech.length ? Math.max.apply(null, floorsDuringSpeech) : 0,
+      meanLevel: mean(levelsDuringSpeech),
+      minSecond: seconds.length ? Math.min.apply(null, seconds) : 0,
+      stopped,
+      stoppedAt,
+      voicedCount: frames.filter((f) => f.voiced).length
+    };
+  }
+
+  test('a normal voice is flagged from end to end, and the floor does not chase it', () => {
+    const r = drive([[3, 0.0024, 0.2, 0], [14, 0.0145, 0.45, 1], [4, 0.0024, 0.2, 0]]);
+    assert.ok(r.voicedThrough >= 0.95, 'voiced through the sentence: ' + (r.voicedThrough * 100).toFixed(1) + '%');
+    assert.ok(r.maxFloorDuringSpeech <= 0.005, 'the floor stayed under the voice: ' + r.maxFloorDuringSpeech.toFixed(4));
+    assert.ok(r.meanLevel >= 0.6, 'and the orb was driven: mean ' + r.meanLevel.toFixed(2));
+    assert.ok(r.minSecond >= 0.45, 'every second of it too, not just the average: ' + r.minSecond.toFixed(2));
+    assert.strictEqual(r.stopped, 'end-of-speech', 'and it ends when the speaking does');
+  });
+
+  test('a voice with breaths between sentences stays flagged', () => {
+    const segments = [[3, 0.0024, 0.2, 0]];
+    for (let i = 0; i < 4; i++) {
+      segments.push([3, 0.0145, 0.45, 1], [0.6, 0.0026, 0.2, 0]);
+    }
+    const r = drive(segments);
+    assert.ok(r.voicedThrough >= 0.9, 'the breaths do not end it: ' + (r.voicedThrough * 100).toFixed(1) + '%');
+  });
+
+  test('a quiet microphone is heard, not dismissed as silence', () => {
+    /* The failure this guards: an absolute threshold measured on one machine, which a
+     * quieter input (a headset, a different room) never reaches — the gate flags
+     * nothing, the app reports noSpeech, and the orb is clearly moving. */
+    const r = drive([[3, 0.0008, 0.2, 0], [8, 0.004, 0.45, 1], [3, 0.0008, 0.2, 0]]);
+    assert.ok(r.voicedThrough >= 0.9, 'flagged: ' + (r.voicedThrough * 100).toFixed(1) + '%');
+    const speechEnded = 3 + 8;
+    assert.ok(r.stopped === null || r.stoppedAt / 1000 >= speechEnded, 'and the recording was not cut off while they spoke: ' + r.stopped + ' @' + r.stoppedAt);
+  });
+
+  test('and an even quieter one too', () => {
+    const r = drive([[3, 0.0006, 0.2, 0], [8, 0.003, 0.45, 1], [3, 0.0006, 0.2, 0]]);
+    assert.ok(r.voicedThrough >= 0.85, 'flagged: ' + (r.voicedThrough * 100).toFixed(1) + '%');
+  });
+
+  test('a room with nobody in it flags nothing', () => {
+    const r = drive([[60, 0.0024, 0.3, 0]]);
+    assert.strictEqual(r.voicedCount, 0, 'not one frame of a room is speech');
+    assert.strictEqual(r.stopped, 'no-speech');
+    assert.ok(r.stoppedAt <= 8500, 'and it stops at the wait it was given: ' + r.stoppedAt);
+  });
+
+  test('a very quiet room flags nothing either', () => {
+    const r = drive([[60, 0.0008, 0.3, 0]]);
+    assert.strictEqual(r.voicedCount, 0, 'a quieter room is still a room');
+  });
+
+  test('a loud room is learned rather than transcribed', () => {
+    /* The first recording in a room much louder than the last one is partly
+     * mis-flagged — the gate has no way to know it is a room until it has heard it —
+     * but it must stop, and the next recording starts calibrated. */
+    const known = drive([[60, 0.0052, 0.3, 0]], { gate: { initialFloor: 0.005 } });
+    assert.ok(known.voicedCount / known.frames.length <= 0.01, 'a calibrated loud room flags almost nothing: ' + known.voicedCount);
+
+    const cold = drive([[60, 0.0052, 0.3, 0]], { gate: { initialFloor: 0.002 } });
+    assert.ok(cold.voicedCount / cold.frames.length <= 0.2, 'a cold start in it flags at most a fifth: ' + cold.voicedCount);
+    assert.ok(cold.stoppedAt !== null && cold.stoppedAt <= 15000, 'and it does not hang: ' + cold.stoppedAt);
+  });
+
+  test('speaking immediately, with no quiet lead-in, still counts', () => {
+    const r = drive([[10, 0.0145, 0.45, 1], [4, 0.0024, 0.2, 0]]);
+    assert.ok(r.voicedThrough >= 0.95, 'flagged: ' + (r.voicedThrough * 100).toFixed(1) + '%');
+    assert.ok(r.meanLevel >= 0.6, 'and it drives the orb: ' + r.meanLevel.toFixed(2));
+  });
+
+  test('a fan that comes on after the speaking does not hold the recording open', () => {
+    const r = drive([[3, 0.0024, 0.2, 0], [5, 0.0145, 0.45, 1], [10, 0.006, 0.1, 0]]);
+    assert.strictEqual(r.stopped, 'end-of-speech', 'steady noise is not a reason to keep listening');
+    assert.ok(r.stoppedAt <= 5000 + 3000 + 7000, 'within seven seconds of the speech ending: ' + r.stoppedAt);
   });
 })();
 

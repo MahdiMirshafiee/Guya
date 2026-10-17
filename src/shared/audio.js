@@ -258,50 +258,46 @@
 
   /* --------------------------------------------------------- voice gate --- */
 
-  /* Two jobs that used to be one measurement, done properly.
+  /* Is this the room, or is this someone talking?
    *
-   * The gate answers "is this the room, or is this someone talking?" with a floor
-   * that follows the room in BOTH directions: it is the quietest frame of the last
-   * two and a half seconds, so a fan starting or automatic gain settling cannot
-   * leave it behind — the previous version could only ever move down, which made its
-   * threshold a constant in any room with steady noise. While a voice is present it
-   * rises at most 1.3x per second, except when the signal is *steady* (its peak
-   * barely moves over most of a second): that is a fan or a hiss, not speech, and
-   * speech modulates far too much to look like it.
+   * The level the room sits at depends on the microphone, the platform's gain and the
+   * room itself, so nothing here is an absolute number: the floor is a LOW QUANTILE of
+   * the last two and a half seconds — what the room sounds like, not the single
+   * quietest frame it ever managed, which one silent buffer from a driver could pin at
+   * nothing for a whole session.
    *
-   * The endpointer answers "are they finished?" with two different waits, because
-   * "nobody has spoken yet" and "they have stopped speaking" are not the same
-   * question: waiting ten seconds for the first is ten seconds of the user's life
-   * and ten seconds of silence uploaded to the provider.
+   * It follows a quieter room at once, and rises when nobody is talking, or when the
+   * whole window is steady: a fan, a hiss or the platform's gain settling are steady,
+   * while speech modulates far too much to look steady. While a voice is present the
+   * floor may rise only very slowly (5% a second), because otherwise a long sentence
+   * raises its own threshold and goes quiet in the middle of the sentence.
    *
-   * Both are pure and count audio time rather than wall-clock time, so they behave
-   * the same in a test and in a slow renderer. */
+   * Speech has to clear the threshold for a tenth of a second to count (a keyboard
+   * click is one frame), and four tenths of a second of hang-over keep the gaps
+   * between words from ending it. Both are counted in audio time rather than
+   * wall-clock time, so this behaves the same in a test and in a slow renderer. */
   function createVoiceGate(options) {
-    /* minThreshold is measured, not chosen: on this machine with the platform's gain
-     * doing its work, a room sits at 0.0024 RMS on average and 0.0052 at its loudest
-     * tenth, while someone talking averages 0.0145. At 0.0035 the room itself cleared
-     * the threshold and most of a silent recording counted as speech — which is how a
-     * recording of a room came back as an invented word. 0.006 sits above the room's
-     * loud moments and below a quiet speaker's peaks. */
-    var o = { windowMs: 2500, minThreshold: 0.006, onsetRatio: 3.5, offsetRatio: 2.2, onsetMs: 100, hangMs: 400, voicedRisePerSec: 1.3, initialFloor: 0.002, hardFloor: 0.0003, steadyMs: 800, steadyRatio: 2.2 };
+    var o = { windowMs: 2500, minThreshold: 0.0025, onsetRatio: 3.0, offsetRatio: 2.0, onsetMs: 100, hangMs: 400,
+              initialFloor: 0.002, hardFloor: 0.0003, steadyMs: 800, steadyRatio: 2.2, quantile: 0.2,
+              minFrames: 5, voicedRisePerSec: 1.05 };
     if (options) for (var k in options) o[k] = options[k];
-    var history = [], clock = 0, floor = o.initialFloor, voiced = false, onsetRun = 0, hang = 0;
+    var win = [], clock = 0, floor = o.initialFloor, voiced = false, onsetRun = 0, hang = 0;
     function push(rms, frameMs) {
       clock += frameMs;
-      history.push([clock, rms]);
-      while (history.length && history[0][0] < clock - o.windowMs) history.shift();
+      win.push([clock, rms]);
+      while (win.length && win[0][0] < clock - o.windowMs) win.shift();
       var low = Infinity, high = 0;
-      for (var i = 0; i < history.length; i++) {
-        if (history[i][1] < low) low = history[i][1];
-        if (history[i][1] > high) high = history[i][1];
-      }
-      var target = Math.max(low, o.hardFloor);
-      /* Steady sound (a fan, hiss, AGC gain settling) barely moves from frame to frame; speech does. */
-      var span = history.length > 1 ? clock - history[0][0] : 0;
+      for (var i = 0; i < win.length; i++) { if (win[i][1] < low) low = win[i][1]; if (win[i][1] > high) high = win[i][1]; }
+      var span = win.length > 1 ? clock - win[0][0] : 0;
       var steady = span >= o.steadyMs && high <= low * o.steadyRatio;
-      if (target <= floor) floor = target;
-      else if (steady) floor = target;
-      else if (clock >= o.windowMs) floor = voiced ? Math.min(target, floor * Math.pow(o.voicedRisePerSec, frameMs / 1000)) : target;
+      if (win.length >= o.minFrames) {
+        var sorted = win.map(function (e) { return e[1]; }).sort(function (a, b) { return a - b; });
+        var target = Math.max(sorted[Math.floor((sorted.length - 1) * o.quantile)], o.hardFloor);
+        if (target <= floor) floor = target;
+        else if (steady) floor = target;
+        else if (clock >= o.windowMs && !voiced) floor = target;
+        else if (clock >= o.windowMs && voiced) floor = Math.min(target, floor * Math.pow(o.voicedRisePerSec, frameMs / 1000));
+      }
       var on = Math.max(o.minThreshold, floor * o.onsetRatio);
       var off = Math.max(o.minThreshold * 0.6, floor * o.offsetRatio);
       var credit = 0;
