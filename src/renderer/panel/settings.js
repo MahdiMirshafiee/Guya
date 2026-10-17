@@ -33,6 +33,8 @@ const F = {
   quitApp: document.getElementById('quitApp'),
   pasteFootnote: document.getElementById('pasteFootnote'),
   pasteNotice: document.getElementById('pasteNotice'),
+  pasteNeedsText: document.getElementById('pasteNeedsText'),
+  pasteGrantedText: document.getElementById('pasteGrantedText'),
   openAccessibility: document.getElementById('openAccessibility'),
   askAccessibility: document.getElementById('askAccessibility'),
   status: document.getElementById('settingsStatus')
@@ -79,8 +81,8 @@ function currentFormPatch() {
     language: F.language.value,
     prompt: F.prompt.value,
     uiLanguage: F.uiLanguageSelect.value || settings.uiLanguage,
-    silenceStopMs: durationValue(F.silenceStop, F.silenceCustom),
-    noSpeechStopMs: durationValue(F.noSpeechStop, F.noSpeechCustom),
+    silenceStopMs: durationValue(F.silenceStop, F.silenceCustom, settings.silenceStopMs),
+    noSpeechStopMs: durationValue(F.noSpeechStop, F.noSpeechCustom, settings.noSpeechStopMs),
     attempts: Number(F.attempts.value),
     shortcut: shortcutDraft || settings.shortcut,
     copyToClipboard: F.copyToClipboard.checked,
@@ -96,10 +98,14 @@ function secondsOf(ms) {
   return Math.round((ms / 1000) * 10) / 10;
 }
 
-function durationValue(select, input) {
+/* The value a duration row is asking for. An empty or unusable Custom field is not a
+ * request to turn the wait off: opening "Custom…" and clicking away used to write 0, which
+ * the store reads as Off — the recording then stopped on nothing but the five-minute cap —
+ * so an empty field keeps whatever is in force. */
+function durationValue(select, input, inForceMs) {
   if (select.value !== CUSTOM_MODEL) return Number(select.value);
   const seconds = Number(input.value);
-  if (!Number.isFinite(seconds) || seconds <= 0) return 0;
+  if (!Number.isFinite(seconds) || seconds <= 0) return typeof inForceMs === 'number' ? inForceMs : 0;
   return Math.round(seconds * 1000);
 }
 
@@ -130,6 +136,11 @@ function renderDuration(select, input, unit, currentMs, choices, language) {
  * faster than releases, so a closed list would rot, and a bare text field would
  * make the common case worse. */
 function renderModels() {
+  /* The curated list arrives with the app info, and this form paints before the main
+   * process has answered: seeded once at load time it seeded nothing, and the picker
+   * offered the current model and "Custom…" — the two suggestions the footnote mentions
+   * were reachable only by typing them. */
+  if (!models.length && appState.knownModels) models = appState.knownModels.map((id) => ({ id }));
   const current = settings.model || '';
   F.modelSelect.innerHTML = '';
 
@@ -267,6 +278,10 @@ function showPasteNotice(granted) {
   F.pasteNotice.classList.toggle('is-granted', !!granted);
   F.openAccessibility.hidden = !!granted;
   F.askAccessibility.hidden = !!granted;
+  /* One notice, two states, two sentences: the granted one used to say the permission was
+   * required and that the option stays off, in green, right after it was granted. */
+  F.pasteNeedsText.hidden = !!granted;
+  F.pasteGrantedText.hidden = !granted;
   // The user just flipped a switch near the bottom of the form; bring the answer
   // to where they are looking instead of leaving it below the fold.
   F.pasteNotice.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -330,6 +345,7 @@ async function saveAndRepaint(patch) {
   /* The saved setting is the truth: a draft that was refused, or that the store
    * rewrote, must not be shown as if it were in effect. */
   shortcutDraft = '';
+  if (patch && patch.shortcut !== undefined) renderShortcut();
   if (response.pasteBlocked) showPasteNotice(false);
   if (response.warningKey) setFormStatus(response.warningKey, 'warn');
   else if (formStatus.kind === 'warn' && formStatus.key) formStatus = { key: null, vars: null, kind: '' };
@@ -340,8 +356,14 @@ async function saveAndRepaint(patch) {
 async function checkKey() {
   if (!F.apiKey.value.trim()) return;
   const result = await api.testKey(currentModel());
-  if (!result.ok) setFormStatus(result.errorKey || 'error.unexpected', 'error', result.errorVars);
-  else renderSettingsStatus();
+  if (!result.ok) {
+    setFormStatus(result.errorKey || 'error.unexpected', 'error', result.errorVars);
+    return;
+  }
+  /* It works now: the sentence about it not working was still on screen, because nothing
+   * ever cleared a status the user had just disproved. */
+  formStatus = { key: null, vars: null, kind: '' };
+  renderSettingsStatus();
 }
 
 async function refreshModels() {
@@ -415,9 +437,14 @@ function commitOnBlur(input, after, patchOf) {
     await saveAndRepaint(patchOf ? patchOf() : undefined);
     if (after) after();
   });
-  on(input, 'keydown', (event) => {
-    if (event.key === 'Enter') input.blur();
-  });
+  /* Enter is how a one-line field is finished with. The system prompt is paragraphs of
+   * instructions in a textarea, and there Enter is a newline — it committed the field and
+   * took the focus away instead, so a line could only be added by pasting one. */
+  if (input.tagName !== 'TEXTAREA') {
+    on(input, 'keydown', (event) => {
+      if (event.key === 'Enter') input.blur();
+    });
+  }
 }
 
 function initSettings() {
@@ -444,18 +471,24 @@ function initSettings() {
     const isCustom = F.silenceStop.value === CUSTOM_MODEL;
     F.silenceCustom.hidden = !isCustom;
     F.silenceUnit.hidden = !isCustom;
-    if (isCustom) F.silenceCustom.focus();
-    else saveAndRepaint({ silenceStopMs: Number(F.silenceStop.value) });
+    if (isCustom) {
+      /* Starting from what is in force: the field kept the last number typed into it, so
+       * re-opening "Custom…" and clicking away saved that instead of the row's value. */
+      F.silenceCustom.value = String(secondsOf(settings.silenceStopMs));
+      F.silenceCustom.focus();
+    } else saveAndRepaint({ silenceStopMs: Number(F.silenceStop.value) });
   });
   on(F.noSpeechStop, 'change', () => {
     const isCustom = F.noSpeechStop.value === CUSTOM_MODEL;
     F.noSpeechCustom.hidden = !isCustom;
     F.noSpeechUnit.hidden = !isCustom;
-    if (isCustom) F.noSpeechCustom.focus();
-    else saveAndRepaint({ noSpeechStopMs: Number(F.noSpeechStop.value) });
+    if (isCustom) {
+      F.noSpeechCustom.value = String(secondsOf(settings.noSpeechStopMs));
+      F.noSpeechCustom.focus();
+    } else saveAndRepaint({ noSpeechStopMs: Number(F.noSpeechStop.value) });
   });
-  commitOnBlur(F.silenceCustom, () => saveAndRepaint({ silenceStopMs: durationValue(F.silenceStop, F.silenceCustom) }));
-  commitOnBlur(F.noSpeechCustom, () => saveAndRepaint({ noSpeechStopMs: durationValue(F.noSpeechStop, F.noSpeechCustom) }));
+  commitOnBlur(F.silenceCustom, () => saveAndRepaint({ silenceStopMs: durationValue(F.silenceStop, F.silenceCustom, settings.silenceStopMs) }));
+  commitOnBlur(F.noSpeechCustom, () => saveAndRepaint({ noSpeechStopMs: durationValue(F.noSpeechStop, F.noSpeechCustom, settings.noSpeechStopMs) }));
   on(F.attempts, 'change', () => saveAndRepaint({ attempts: Number(F.attempts.value) }));
   on(F.uiLanguageSelect, 'change', async () => {
     await saveSettings(Object.assign(currentFormPatch(), { uiLanguage: F.uiLanguageSelect.value }));
@@ -519,11 +552,9 @@ function initSettings() {
   if (api.platform !== 'darwin') F.quitFootnote.hidden = false;
   on(F.quitApp, 'click', () => api.quit());
 
-  // Seed the picker with the curated suggestions; "Refresh models" replaces them
-  // with what the key can actually use.
-  if (!models.length && appState.knownModels) models = appState.knownModels.map((id) => ({ id }));
-
-  repaintSettings();
+  /* The form is not painted here: this script runs before the shell has read the
+   * settings, so a paint now draws empty selects and a duration field with no number in
+   * it for a frame. The shell paints as soon as it has the answer. */
 }
 
 /* Called by the shell every time the settings screen is opened. */

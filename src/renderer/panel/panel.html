@@ -169,7 +169,9 @@
 
         <!-- Shown only when the system refused the permission this feature needs. -->
         <div class="notice" id="pasteNotice" hidden>
-          <p class="notice-text" data-i18n="settings.pasteNeedsPermission"></p>
+          <p class="notice-text" id="pasteNeedsText" data-i18n="settings.pasteNeedsPermission"></p>
+          <!-- The same notice, saying what actually happened once the permission is there. -->
+          <p class="notice-text" id="pasteGrantedText" data-i18n="ui.pasteGranted" hidden></p>
           <div class="notice-actions">
             <button id="openAccessibility" class="btn-quiet" type="button" data-i18n="ui.openSystemSettings"></button>
             <button id="askAccessibility" class="btn-quiet" type="button" data-i18n="ui.askMacos"></button>

@@ -431,6 +431,11 @@ class Cdp {
   check('nothing interactive sits in it', chrome.controlsInStrip === 0, JSON.stringify(chrome));
   check('and the header is not a drag region that would summon them', chrome.dragRegion === 'none', chrome.dragRegion);
   check('the model picker is populated', (await panel.eval(`document.getElementById('modelSelect').options.length`)) > 1);
+  /* The curated names, not only the one in use: the list comes with the app info, and
+   * seeding it once as this form's script ran meant it seeded an empty object — the two
+   * models the footnote recommends could only be had by typing them. */
+  const modelOptions = await panel.eval(`Array.from(document.getElementById('modelSelect').options).map((o) => o.value)`);
+  check('and offers the curated models, not just the current one', modelOptions.indexOf('gemini-2.5-flash-lite') !== -1 && modelOptions.length >= 4, modelOptions.join(', '));
   check('the spoken-language picker is populated', (await panel.eval(`document.getElementById('language').options.length`)) > 5);
   check('the silence stop offers real choices', (await panel.eval(`document.getElementById('silenceStop').options.length`)) >= 4);
   check('stopping when nobody speaks is a setting of its own', (await panel.eval(`document.getElementById('noSpeechStop').options.length`)) >= 4);
@@ -457,6 +462,28 @@ class Cdp {
   })()`);
   await sleep(500);
   check('the attempt count is offered', (await panel.eval(`document.getElementById('attempts').options.length`)) >= 3);
+
+  /* Opening "Custom…" starts from what is in force, and leaving it empty keeps it: the
+   * field used to be blank (or to hold the number typed there last), and an empty one
+   * saved 0 — which the store reads as Off, so the wait the user never asked to change
+   * disappeared and the recording ran to the five-minute cap. */
+  const untouched = await panel.eval(`(async () => {
+    const select = document.getElementById('silenceStop');
+    const before = (await guya.getAppInfo()).settings.silenceStopMs;
+    select.value = '__custom__';
+    select.dispatchEvent(new Event('change'));
+    const prefilled = document.getElementById('silenceCustom').value;
+    const field = document.getElementById('silenceCustom');
+    field.value = '';
+    field.dispatchEvent(new Event('blur'));
+    await new Promise((r) => setTimeout(r, 500));
+    const after = (await guya.getAppInfo()).settings.silenceStopMs;
+    select.value = String(before);
+    select.dispatchEvent(new Event('change'));
+    return { before, prefilled, after };
+  })()`);
+  check('a duration field starts from the value in force', untouched.prefilled === String(untouched.before / 1000), JSON.stringify(untouched));
+  check('and an emptied one does not silently turn the wait off', untouched.after === untouched.before, JSON.stringify(untouched));
   check('durations are locale-formatted', /[۰-۹]/.test(await panel.eval(`document.getElementById('silenceStop').options[1].textContent`)));
   check('the key is present', (await panel.eval(`document.getElementById('apiKey').value.length`)) > 0);
 
@@ -495,6 +522,24 @@ class Cdp {
   })()`);
   await sleep(600);
 
+  /* The prompt is the instructions, in paragraphs: Enter has to be a newline in that field
+   * rather than the commit-and-leave it is in a one-line one. A synthetic key press does
+   * not insert text, so what is asserted is the part the app decides: the focus stays. */
+  const promptEnter = await panel.eval(`(() => {
+    const field = document.getElementById('prompt');
+    field.focus();
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    return { stillFocused: document.activeElement === field };
+  })()`);
+  check('Enter does not take the focus out of the prompt', promptEnter.stillFocused === true, JSON.stringify(promptEnter));
+  await panel.eval(`(() => {
+    const field = document.getElementById('prompt');
+    field.value = GuyaPrompt.DEFAULT_PROMPT;
+    field.dispatchEvent(new Event('blur'));
+    return true;
+  })()`);
+  await sleep(500);
+
   check('the shortcut is drawn as key caps', (await panel.eval(`document.querySelectorAll('#shortcut kbd').length`)) >= 2);
   check('every group has a title and most have a footnote', (await panel.eval(`document.querySelectorAll('.section-title').length`)) >= 4 && (await panel.eval(`document.querySelectorAll('.footnote').length`)) >= 3);
   check('no wake-word setting exists any more', (await panel.eval(`document.querySelectorAll('#wakeEnabled,#wakeWord').length`)) === 0);
@@ -528,6 +573,34 @@ class Cdp {
   console.log('  accessibility granted:', afterAttempt.granted, '| paste toggle:', paste.toggle, '| notice:', paste.notice);
   check('the setting follows the permission', afterAttempt.granted ? paste.toggle === true : paste.toggle === false, paste);
   if (!afterAttempt.granted) check('the refusal offers the system pane', paste.notice && paste.offersPane, paste);
+
+  /* The notice carries a sentence for each of its two states. It had one, written for the
+   * refusal, so the granted state said the permission is required and the option stays off
+   * — in green, immediately after the user granted it. */
+  const noticeStates = await panel.eval(`(() => {
+    showPasteNotice(true);
+    const granted = {
+      says: document.getElementById('pasteGrantedText').textContent.trim(),
+      needsHidden: document.getElementById('pasteNeedsText').hidden,
+      grantedShown: !document.getElementById('pasteGrantedText').hidden
+    };
+    showPasteNotice(false);
+    const refused = {
+      needsShown: !document.getElementById('pasteNeedsText').hidden,
+      grantedHidden: document.getElementById('pasteGrantedText').hidden
+    };
+    return { granted, refused };
+  })()`);
+  check(
+    'the permission notice has a sentence for each state',
+    noticeStates.granted.says.length > 0 &&
+      noticeStates.granted.needsHidden &&
+      noticeStates.granted.grantedShown &&
+      noticeStates.refused.needsShown &&
+      noticeStates.refused.grantedHidden,
+    JSON.stringify(noticeStates)
+  );
+  if (afterAttempt.granted) await panel.eval('hidePasteNotice()');
   /* The interface language is a real switch, not a translation layer: in English
    * nothing Persian may survive anywhere on screen, tooltips and names included. */
   await panel.eval(`(() => { const s = document.getElementById('uiLanguageSelect'); s.value = 'en'; s.dispatchEvent(new Event('change')); return true; })()`);

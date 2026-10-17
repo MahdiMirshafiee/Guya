@@ -126,6 +126,8 @@ function stopPump() {
 }
 
 function setState(name, text) {
+  /* Read before it is written: whether this is a window coming back into use. */
+  const wasIdle = stage.dataset.state === 'idle';
   stage.dataset.state = name;
   messageEl.textContent = text || '';
   messageEl.classList.toggle('show', !!text);
@@ -135,9 +137,11 @@ function setState(name, text) {
     return;
   }
   /* Coming back from hidden: the window may be on a display with a different pixel
-   * ratio, and the window itself never resizes, so this is where the canvas is sized
-   * for the screen it is actually on. */
-  if (stage.dataset.state === 'idle') orb.resize();
+   * ratio, and the window itself never resizes, so this is where the canvas is sized for
+   * the screen it is actually on. The line below used to test the state it had just
+   * written, so it never fired, and the orb kept the pixel ratio of the display it was
+   * first drawn on. */
+  if (wasIdle) orb.resize();
   orb.setDriven(name === 'listening');
   orb.setProcessing(name === 'processing');
   /* The switch to warm at the instant the microphone goes live is the signal the user
@@ -487,9 +491,14 @@ api.onOverlayCommand((payload) => {
      * interrupted by this — the window can be hidden while the microphone is open. */
     if (!capturing && !starting) setState('idle');
   } else if (payload.type === 'flash') {
-    // The main process sends a key; this window owns the words, in whatever
-    // language the interface is in right now.
+    /* The main process sends a key; this window owns the words, in whatever language the
+     * interface is in right now — and the direction with them. The page is written for
+     * Persian, so an English message was laid out right-to-left: a full stop at the wrong
+     * end of the line. */
     const text = payload.messageKey ? GuyaI18n.t(payload.language, payload.messageKey, payload.messageVars) : '';
+    const language = payload.language === 'en' ? 'en' : 'fa';
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === 'fa' ? 'rtl' : 'ltr';
     setState(payload.state === 'error' ? 'error' : 'done', text);
   }
 });
