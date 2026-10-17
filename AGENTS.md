@@ -75,6 +75,7 @@ preference.
 | Build, install and register on this machine | `npm run install:mac` |
 | Cut a release | `scripts/release.sh 1.1.0` |
 | Preview the release notes | `npm run notes v1.1.0` |
+| Publish or re-cut it by hand | `scripts/publish-release.sh v1.0.0 notes.md <files…>` |
 
 ## Definition of done
 
@@ -133,9 +134,21 @@ It checks the tree is clean, runs the tests, regenerates the icon, bumps
 2. builds on `macos-latest`, `windows-latest` and `ubuntu-latest` with
    `electron-builder` — each platform packages on its own system, because a deb
    needs dpkg and an AppImage needs appimagetool,
-3. creates the GitHub release and attaches the `.dmg`, `-mac.zip`, `.exe`,
-   `.AppImage` and `.deb`. Artifacts are named for the runner's architecture, so a
-   release from the standard runners ships macOS arm64 and Windows/Linux x64.
+3. publishes it with `scripts/publish-release.sh`, which creates the release and
+   attaches the `.dmg`, `.exe`, `.AppImage` and `.deb`. Each system is built for
+   both of its architectures, and every file name carries the architecture it is
+   for, so nothing on the page needs a note explaining which download to pick.
+
+A version that shipped with something wrong with it is published again under the
+same tag: push the tag again and `scripts/publish-release.sh` re-cuts the release —
+the notes are rewritten from the commits as they are now, the new files replace the
+old ones, and a file the build no longer produces is removed, so the page never
+offers two downloads for one job. The script is the whole publish path and can be
+run by hand with `gh` on the PATH:
+
+```bash
+scripts/publish-release.sh v1.0.0 notes.md dist/*.dmg dist/*.exe dist/*.AppImage dist/*.deb
+```
 
 `.github/workflows/ci.yml` runs the unit tests on all three systems, the
 end-to-end suite on macOS, and packages both platforms on every push.

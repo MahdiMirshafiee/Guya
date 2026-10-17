@@ -78,7 +78,13 @@ jobs:
       # Signing is one secret away: set CSC_LINK and CSC_KEY_PASSWORD (macOS) or
       # the Windows equivalent and electron-builder picks them up. Without them
       # the artifacts build unsigned, which is what a local build produces too.
-      - run: npx electron-builder --${{ matrix.target }} --publish never
+      #
+      # Both architectures of each system, not just the one the runner happens to be:
+      # electron-builder cross-builds the other one, and every file carries its
+      # architecture in its name, so nothing collides and nobody downloads a build
+      # their machine cannot run. The combined installers this used to produce — one
+      # 207 MB file with both architectures inside — are gone with the names.
+      - run: npx electron-builder --${{ matrix.target }} --x64 --arm64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: guya-${{ matrix.target }}
@@ -118,15 +124,7 @@ jobs:
           files=()
           while IFS= read -r file; do files+=("$file"); done < <(find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) | sort)
           printf 'attaching:\n%s\n' "${files[@]}"
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "::error::no installers were downloaded from the build jobs"
-            exit 1
-          fi
-          # --repo is not optional here: this job never checks the repository out, so
-          # there is no working tree for gh to read the remote from — and without it
-          # every release failed with "not a git repository".
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --title "Guya $tag" --notes-file notes.md
-          fi
+          # The publish itself is scripts/publish-release.sh: it creates the release, or
+          # re-cuts one that is already there, and `--repo` is why it needs to exist —
+          # this job checks the repository out, but the script is also run by hand.
+          scripts/publish-release.sh "$tag" notes.md "${files[@]}"

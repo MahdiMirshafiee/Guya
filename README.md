@@ -41,15 +41,14 @@ Download the file for your system from [Releases](../../releases/latest):
 | macOS (Intel) | `Guya-<version>-macOS-x64.dmg` | Intel Macs |
 | Windows (x64) | `Guya-<version>-Windows-x64-Setup.exe` | Installer |
 | Windows (arm64) | `Guya-<version>-Windows-arm64-Setup.exe` | Installer |
-| Windows, without installing | `Guya-<version>-Windows-x64-Portable.exe` | Runs from anywhere |
+| Windows, without installing | `Guya-<version>-Windows-x64-Portable.exe` | Also `-arm64-Portable` |
 | Linux (x64) | `Guya-<version>-Linux-x86_64.AppImage` | Portable; `chmod +x` and run |
 | Linux (x64, Debian) | `Guya-<version>-Linux-amd64.deb` | `sudo apt install ./Guya-...deb` |
-| Linux (arm64) | `Guya-<version>-Linux-arm64.AppImage` | arm64 machines |
+| Linux (arm64) | `Guya-<version>-Linux-arm64.AppImage` | Portable; also `-arm64.deb` |
 
-Releases are packaged on three runners, so the published files are the architecture
-those machines have: **macOS arm64**, **Windows x64** and **Linux x64**. The Intel Mac,
-arm64 Windows and arm64 Linux files are built by the same commands on a machine of that
-kind — `npm run dist:mac`, `npm run dist:win` and `npm run dist:linux` each build both.
+Every system ships both of its architectures, and the file name says which is which —
+`arm64` for Apple silicon and ARM machines, `x64` (or Linux's own `x86_64` and `amd64`)
+for Intel and AMD. On Windows an ARM machine can run the x64 build too.
 
 The builds are **not code-signed**, so the system will warn the first time:
 

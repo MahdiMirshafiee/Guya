@@ -39,16 +39,14 @@
 | مک (Intel) | `Guya-<version>-macOS-x64.dmg` | مک‌های اینتل |
 | ویندوز (x64) | `Guya-<version>-Windows-x64-Setup.exe` | نصب‌کننده |
 | ویندوز (arm64) | `Guya-<version>-Windows-arm64-Setup.exe` | نصب‌کننده |
-| ویندوز، بدون نصب | `Guya-<version>-Windows-x64-Portable.exe` | از هرجا اجرا می‌شود |
+| ویندوز، بدون نصب | `Guya-<version>-Windows-x64-Portable.exe` | نسخه‌ی `-arm64-Portable` هم هست |
 | لینوکس (x64) | `Guya-<version>-Linux-x86_64.AppImage` | پرتابل؛ `chmod +x` و اجرا |
 | لینوکس (x64، دبیان) | `Guya-<version>-Linux-amd64.deb` | `sudo apt install ./Guya-...deb` |
-| لینوکس (arm64) | `Guya-<version>-Linux-arm64.AppImage` | ماشین‌های arm64 |
+| لینوکس (arm64) | `Guya-<version>-Linux-arm64.AppImage` | پرتابل؛ `-arm64.deb` هم هست |
 
-ریلیز روی سه رانر ساخته می‌شود، پس فایل‌های منتشرشده همان معماری‌ای را دارند که آن
-ماشین‌ها دارند: **مک arm64**، **ویندوز x64** و **لینوکس x64**. فایل‌های مک اینتل،
-ویندوز arm64 و لینوکس arm64 با همان دستورها روی ماشینی از همان نوع ساخته می‌شوند —
-`npm run dist:mac` و `npm run dist:win` و `npm run dist:linux` هر کدام هر دو معماری را
-می‌سازند.
+هر سیستم هر دو معماری‌اش را دارد و نام فایل می‌گوید کدام کدام است — `arm64` برای
+Apple silicon و ماشین‌های ARM، و `x64` (یا در لینوکس همان `x86_64` و `amd64`) برای
+اینتل و AMD. در ویندوز، ماشین ARM می‌تواند نسخه‌ی x64 را هم اجرا کند.
 
 فایل‌ها **امضای دیجیتال ندارند**، پس بار اول سیستم هشدار می‌دهد:
 
