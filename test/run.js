@@ -952,6 +952,13 @@ test('the settings the system will not honour are refused, not stored', async ()
    * as a denial told the user their microphone was off with nothing to fix. */
   const status = fakeElectron.systemPreferences.getMediaAccessStatus;
   try {
+    if (process.platform === 'linux') {
+      /* No such permission exists to read on Linux: the device itself is the question,
+       * and whoever answers it is the capture. */
+      fakeElectron.systemPreferences.getMediaAccessStatus = () => 'denied';
+      assert.strictEqual((await systemIntegration.ensureMicrophoneAccess()).ok, true, 'Linux asks the device, not the system');
+      return;
+    }
     fakeElectron.systemPreferences.getMediaAccessStatus = () => 'unknown';
     assert.strictEqual((await systemIntegration.ensureMicrophoneAccess()).ok, true, 'an unanswered question is not a refusal');
     fakeElectron.systemPreferences.getMediaAccessStatus = () => 'denied';
