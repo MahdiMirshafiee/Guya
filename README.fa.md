@@ -39,8 +39,8 @@
 | مک (Intel) | `Guya-<version>-macOS-x64.dmg` | مک‌های اینتل |
 | ویندوز (x64) | `Guya-<version>-Windows-x64-Setup.exe` | نصب‌کننده؛ نسخه‌ی `Portable` نیازی به نصب ندارد |
 | ویندوز (arm64) | `Guya-<version>-Windows-arm64-Setup.exe` | ویندوز روی ARM |
-| لینوکس (x64) | `Guya-<version>-Linux-x64.AppImage` | پرتابل؛ `chmod +x` و اجرا |
-| لینوکس (x64، دبیان) | `Guya-<version>-Linux-x64.deb` | `sudo apt install ./Guya-...deb` |
+| لینوکس (x64) | `Guya-<version>-Linux-x86_64.AppImage` | پرتابل؛ `chmod +x` و اجرا |
+| لینوکس (x64، دبیان) | `Guya-<version>-Linux-amd64.deb` | `sudo apt install ./Guya-...deb` |
 | لینوکس (arm64) | `Guya-<version>-Linux-arm64.AppImage` | ماشین‌های arm64 |
 
 فایل‌ها **امضای دیجیتال ندارند**، پس بار اول سیستم هشدار می‌دهد:

@@ -74,6 +74,7 @@ preference.
 | Package for a named platform | `npm run dist:mac` / `dist:win` / `dist:linux` / `dist` |
 | Build, install and register on this machine | `npm run install:mac` |
 | Cut a release | `scripts/release.sh 1.1.0` |
+| Preview the release notes | `npm run notes v1.1.0` |
 
 ## Definition of done
 

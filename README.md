@@ -41,8 +41,8 @@ Download the file for your system from [Releases](../../releases/latest):
 | macOS (Intel) | `Guya-<version>-macOS-x64.dmg` | Intel Macs |
 | Windows (x64) | `Guya-<version>-Windows-x64-Setup.exe` | Installer; the `Portable` build needs no install |
 | Windows (arm64) | `Guya-<version>-Windows-arm64-Setup.exe` | Windows on ARM |
-| Linux (x64) | `Guya-<version>-Linux-x64.AppImage` | Portable; `chmod +x` and run |
-| Linux (x64, Debian) | `Guya-<version>-Linux-x64.deb` | `sudo apt install ./Guya-...deb` |
+| Linux (x64) | `Guya-<version>-Linux-x86_64.AppImage` | Portable; `chmod +x` and run |
+| Linux (x64, Debian) | `Guya-<version>-Linux-amd64.deb` | `sudo apt install ./Guya-...deb` |
 | Linux (arm64) | `Guya-<version>-Linux-arm64.AppImage` | arm64 machines |
 
 The builds are **not code-signed**, so the system will warn the first time:

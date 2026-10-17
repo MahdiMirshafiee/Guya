@@ -53,7 +53,7 @@ jobs:
             target: mac
             artifacts: |
               dist/*.dmg
-              dist/*-mac.zip
+              dist/*.zip
           - name: Windows
             os: windows-latest
             target: win

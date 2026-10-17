@@ -49,7 +49,7 @@ jobs:
             target: mac
             artifacts: |
               dist/*.dmg
-              dist/*-mac.zip
+              dist/*.zip
           - name: Windows
             os: windows-latest
             target: win
@@ -95,6 +95,15 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the notes are written from the commits since the last tag
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Write the release notes
+        shell: bash
+        run: node scripts/notes.js "${{ github.event.inputs.tag || github.ref_name }}" > notes.md
       - name: Create the release and attach the installers
         shell: bash
         env:
@@ -113,5 +122,5 @@ jobs:
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --title "Guya $tag" --generate-notes
+            gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --title "Guya $tag" --notes-file notes.md
           fi

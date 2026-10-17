@@ -1,7 +1,7 @@
 {
   "name": "guya",
   "productName": "Guya",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "private": true,
   "description": "Minimal local voice-to-text utility (Gemini) for macOS and Windows",
   "main": "src/main/index.js",
@@ -19,7 +19,8 @@
     "dist": "electron-builder --mac --win --linux",
     "e2e": "node test/e2e.js",
     "dist:linux": "electron-builder --linux",
-    "dist:this": "node scripts/dist-this.js"
+    "dist:this": "node scripts/dist-this.js",
+    "notes": "node scripts/notes.js"
   },
   "build": {
     "appId": "com.local.guya",
@@ -33,9 +34,22 @@
       "icon": "build/icon.png",
       "category": "public.app-category.productivity",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
+      "artifactName": "Guya-${version}-macOS-${arch}.${ext}",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Guya needs the microphone to record your voice for transcription."
       }
@@ -43,18 +57,41 @@
     "win": {
       "icon": "build/icon-shape.png",
       "target": [
-        "nsis",
-        "portable"
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "artifactName": "Guya-${version}-Windows-${arch}-Setup.${ext}"
     },
     "linux": {
       "target": [
-        "AppImage",
-        "deb"
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "category": "Utility",
       "icon": "build/icons",
@@ -73,7 +110,14 @@
         "xdg-utils",
         "libatspi2.0-0",
         "libsecret-1-0"
-      ]
+      ],
+      "artifactName": "Guya-${version}-Linux-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Guya-${version}-Windows-${arch}-Portable.${ext}"
+    },
+    "appImage": {
+      "artifactName": "Guya-${version}-Linux-${arch}.${ext}"
     }
   },
   "devDependencies": {
