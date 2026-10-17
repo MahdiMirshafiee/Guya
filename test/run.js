@@ -354,6 +354,74 @@ group('meters');
  * in a room produces. Each scenario states what has to happen, and the numbers are
  * measured: how much of the speech is flagged, what the floor does while someone is
  * talking, and what the meter and the endpointer do with it. */
+group('capture worklet');
+
+/* The worklet runs in a worker-ish global with no DOM, so the test gives it the two
+ * things the platform gives it — a processor base class and a port — loads the real
+ * file, and drives it frame by frame. What is asserted is the whole point of the
+ * file: a partial chunk is handed over on request instead of being lost, and it is
+ * thrown away when a new recording starts instead of being prepended to it. */
+test('the worklet hands over its partial chunk, and forgets it on reset', () => {
+  const posted = [];
+  let handler = null;
+  class FakeProcessor {
+    constructor() {
+      this.port = {
+        postMessage: (message) => posted.push(message),
+        set onmessage(fn) {
+          handler = fn;
+        },
+        get onmessage() {
+          return handler;
+        }
+      };
+    }
+  }
+  const previousProcessor = globalThis.AudioWorkletProcessor;
+  const previousRegister = globalThis.registerProcessor;
+  let registered = null;
+  let RegisteredClass = null;
+  globalThis.AudioWorkletProcessor = FakeProcessor;
+  globalThis.registerProcessor = (name, ctor) => {
+    registered = name;
+    RegisteredClass = ctor;
+  };
+  const file = path.join(__dirname, '..', 'src', 'renderer', 'overlay', 'capture-worklet.js');
+  try {
+    // eslint-disable-next-line no-eval
+    eval(fs.readFileSync(file, 'utf8'));
+    assert.strictEqual(registered, 'guya-capture', 'it registers itself under the name the overlay asks for');
+
+    const node = new RegisteredClass();
+    assert.strictEqual(typeof node.process, 'function');
+
+    /* 23 frames of 128 samples: 1024 + 1024 delivered, 896 left over. */
+    for (let i = 0; i < 23; i++) {
+      const frame = new Float32Array(128).fill(0.5);
+      node.process([[frame]]);
+    }
+    const shape = () => posted.map((m) => (typeof m === 'string' ? m : m.length));
+    assert.deepStrictEqual(shape(), [1024, 1024], 'two full chunks so far');
+
+    handler({ data: 'flush' });
+    assert.deepStrictEqual(shape(), [1024, 1024, 896, 'flushed'], 'the tail is delivered, then the ack');
+    assert.ok(posted[2].every((v) => v === 0.5), 'and it is the audio that was still buffered');
+    assert.strictEqual(posted[2].length, 896, '23 frames of 128 samples leave 896 behind: ' + posted[2].length);
+
+    /* The next recording must not start with 896 samples of the previous one. */
+    handler({ data: 'reset' });
+    const fresh = new Float32Array(1024).fill(0.25);
+    node.process([[fresh]]);
+    const chunk = posted[posted.length - 1];
+    assert.strictEqual(chunk.length, 1024);
+    assert.ok(chunk.every((v) => v === 0.25), 'no leftovers from the previous recording');
+    assert.strictEqual(chunk.filter((v) => v === 0.5).length, 0);
+  } finally {
+    globalThis.AudioWorkletProcessor = previousProcessor;
+    globalThis.registerProcessor = previousRegister;
+  }
+});
+
 group('voice gate');
 
 (function gateScenarios() {

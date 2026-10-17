@@ -57,6 +57,8 @@ let capturing = false;
 let starting = false;
 let pendingStop = false;
 let sessionToken = 0;
+let flushing = false;
+let flushWaiter = null;
 let bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
 let silenceStopMs = DEFAULT_SILENCE_STOP_MS; // after the user has spoken
 let noSpeechStopMs = DEFAULT_NO_SPEECH_STOP_MS; // nobody has spoken yet
@@ -151,13 +153,14 @@ function beginMeasuring() {
 }
 
 function onChunk(chunk) {
-  if (!capturing || !gate) return;
+  if ((!capturing && !flushing) || !gate) return;
   const frameMs = (chunk.length / (captureRate || GuyaAudio.TARGET_RATE)) * 1000;
   const g = gate.push(GuyaAudio.rms(chunk), frameMs);
   lastGate = g;
   if (g.voiced) voiceMs += frameMs + g.creditMs; // creditMs repays the onset frames that were not yet flagged
   chunks.push(chunk);
   frameVoiced.push(g.voiced);
+  if (flushing) return; // the tail is audio, not a new reason to stop
   const reason = endpointer.push(g.voiced, frameMs);
   if (reason) {
     api.overlayAutoStopped(reason); // first: the main process must be ready for the audio that follows
@@ -200,6 +203,9 @@ async function openMic(token) {
       return false;
     }
     sourceNode = audioCtx.createMediaStreamSource(stream);
+    /* The worklet outlives the recording, and a partial chunk in it would be
+     * prepended to this one. */
+    if (captureNode.port) captureNode.port.postMessage('reset');
     sourceNode.connect(captureNode);
     sourceNode.connect(analyser);
     if (audioCtx.state === 'suspended') await audioCtx.resume();
@@ -214,6 +220,25 @@ async function openMic(token) {
     return false;
   }
   return true;
+}
+
+/* Hands over whatever the worklet is still holding, so the last fraction of a second
+ * before the user pressed stop is part of the recording. Resolves when the worklet has
+ * answered, or after a short wait — the answer is not worth a hung app. */
+function flushCapture() {
+  if (!captureNode || !captureNode.port) return Promise.resolve(); // the ScriptProcessor fallback has no port
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      flushWaiter = null;
+      resolve();
+    }, 150);
+    flushWaiter = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    flushing = true;
+    captureNode.port.postMessage('flush');
+  });
 }
 
 function onDeviceLost(token) {
@@ -258,7 +283,16 @@ function prepareGraph() {
       try {
         await audioCtx.audioWorklet.addModule('/renderer/overlay/capture-worklet.js');
         captureNode = new AudioWorkletNode(audioCtx, 'guya-capture');
-        captureNode.port.onmessage = (event) => onChunk(event.data);
+        captureNode.port.onmessage = (event) => {
+          if (event.data === 'flushed') {
+            if (flushWaiter) {
+              flushWaiter();
+              flushWaiter = null;
+            }
+            return;
+          }
+          onChunk(event.data);
+        };
       } catch (err) {
         console.warn('[guya] AudioWorklet unavailable, falling back to ScriptProcessor:', err && err.message);
         captureNode = null;
@@ -308,6 +342,11 @@ async function reportFailure(err) {
   pendingStop = false;
   stopPump();
   sessionToken++; // any openMic() still in flight is nobody's now
+  flushing = false;
+  if (flushWaiter) {
+    flushWaiter();
+    flushWaiter = null;
+  }
   releaseMic();
   bands = [GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST, GuyaOrb.REST];
   setState('error', '');
@@ -346,6 +385,11 @@ async function stopCapture() {
   capturing = false;
   pendingStop = false;
   setState('processing', '');
+
+  const token = sessionToken;
+  await flushCapture();
+  flushing = false;
+  if (token !== sessionToken) return; // abortCapture()/reportFailure() ran while we waited: nobody wants this result
 
   const rate = captureRate || GuyaAudio.TARGET_RATE;
   let samples = 0;
