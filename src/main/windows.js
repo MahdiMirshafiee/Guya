@@ -80,6 +80,12 @@ function createPanel() {
     if (panelWin && !panelWin.isDestroyed()) panelWin.reload();
   });
 
+  /* The overlay window is hidden rather than closed, so it would keep the app alive
+   * for ever on a platform where closing the window is how the user quits. */
+  panelWin.on('closed', () => {
+    if (!IS_MAC && !app.isQuitting) app.quit();
+  });
+
   panelWin.on('close', (event) => {
     // On macOS the app keeps living in the dock; elsewhere closing means quit.
     if (IS_MAC && !app.isQuitting) {

@@ -836,7 +836,13 @@ test('unknown fields are dropped', () => {
 group('typing into another app');
 
 test('the platform picks the right helper', () => {
-  assert.strictEqual(systemIntegration.pasteSupport().supported, true, 'macOS and Windows always have one');
+  /* On macOS and Windows the helper is the system's own, so paste is always available.
+   * On Linux it depends on which tools are installed, and that is a fact about the
+   * machine, not about the code — asking `choosePasteTool` directly (below) is what
+   * tests the choice, so this only asserts that the answer is a boolean there. */
+  const supported = systemIntegration.pasteSupport().supported;
+  if (process.platform === 'linux') assert.strictEqual(typeof supported, 'boolean', 'on Linux it depends on what is installed');
+  else assert.strictEqual(supported, true, 'macOS and Windows always have one');
 });
 
 test('a Linux session prefers the tool its display server has', () => {
@@ -1877,6 +1883,20 @@ test('the key is not written in the clear when the system can keep it', () => {
   fs.writeFileSync(file, saved);
   if (cached) require.cache[storePath] = cached;
   else delete require.cache[storePath];
+});
+
+test('the settings file never carries the report on the last save', () => {
+  /* `update()` tells the caller whether the bytes reached the disk. That report was
+   * written into the cache and from there into settings.json, where it would sit
+   * looking like a setting. */
+  const file = store.path;
+  const saved = fs.readFileSync(file, 'utf8');
+  store.update({ model: 'gemini-2.5-flash' });
+  const onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.strictEqual(onDisk.ok, undefined, 'no report in the file');
+  assert.strictEqual(store.read().ok, undefined, 'and none in what the rest of the app reads');
+  assert.strictEqual(store.update({ model: 'gemini-2.5-flash' }).ok, true, 'but the caller is told');
+  fs.writeFileSync(file, saved);
 });
 
 test('a settings file that cannot be parsed is kept, not overwritten', () => {

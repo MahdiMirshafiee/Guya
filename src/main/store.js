@@ -54,6 +54,7 @@ function sanitize(raw, fallback) {
   if (typeof raw.copyToClipboard === 'boolean') out.copyToClipboard = raw.copyToClipboard;
   if (typeof raw.pasteAfterTranscribe === 'boolean') out.pasteAfterTranscribe = raw.pasteAfterTranscribe;
   if (typeof raw.launchAtLogin === 'boolean') out.launchAtLogin = raw.launchAtLogin;
+  delete out.ok; // a report from the last save, never a setting
 
   return out;
 }
@@ -178,9 +179,9 @@ function write(next) {
  * caller keeps working; `update.ok` says whether it reached the disk. */
 function update(partial) {
   const result = write(Object.assign({}, read(), partial || {}));
-  const settings = result.settings;
-  settings.ok = result.ok;
-  return settings;
+  /* A copy: the caller learns whether the save reached the disk, and the cached
+   * settings — which are what gets written — never carry the report. */
+  return Object.assign({}, result.settings, { ok: result.ok });
 }
 
 module.exports = { read, update, path: FILE };

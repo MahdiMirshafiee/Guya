@@ -291,11 +291,27 @@ function abortCapture() {
 /* The context, the worklet and the analyser, once, as early as possible: building
  * them while the user is still deciding to record is what makes the start
  * immediate, and none of it touches the microphone. */
+/* A graph that failed or was closed is thrown away whole: Chromium allows only a few
+ * audio contexts per page, and a failure that leaks one is a failure that makes the
+ * next attempt fail too. */
+function discardGraph() {
+  const dead = audioCtx;
+  graphReady = null;
+  audioCtx = null;
+  captureNode = null;
+  sinkNode = null;
+  analyser = null;
+  if (dead && dead.state !== 'closed') dead.close().catch(() => {});
+}
+
 function prepareGraph() {
   if (graphReady) return graphReady;
 
   graphReady = (async () => {
     audioCtx = new AudioContext({ sampleRate: GuyaAudio.TARGET_RATE });
+    audioCtx.onstatechange = () => {
+      if (audioCtx && audioCtx.state === 'closed') discardGraph();
+    };
     if (audioCtx.state === 'suspended') await audioCtx.resume();
     captureRate = audioCtx.sampleRate;
 
@@ -335,7 +351,7 @@ function prepareGraph() {
     analyser.connect(sinkNode);
   })().catch((err) => {
     console.warn('[guya] could not prepare the audio graph:', err && err.message);
-    graphReady = null;
+    discardGraph();
   });
 
   return graphReady;

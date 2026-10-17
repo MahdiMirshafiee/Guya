@@ -39,6 +39,6 @@ contextBridge.exposeInMainWorld('guya', {
   overlayReady: () => ipcRenderer.invoke('audio:ready'),
   overlayFailed: (message) => ipcRenderer.invoke('audio:error', message),
   overlayResult: (wav, durationMs, voiceMs, trimmedMs) => ipcRenderer.invoke('audio:result', { wav, durationMs, voiceMs, trimmedMs }),
-  overlayAutoStopped: () => ipcRenderer.invoke('audio:auto-stop'),
+  overlayAutoStopped: (reason) => ipcRenderer.invoke('audio:auto-stop', reason),
   sendSpectrum: (levels) => ipcRenderer.send('audio:spectrum', levels)
 });
