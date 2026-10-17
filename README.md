@@ -39,11 +39,17 @@ Download the file for your system from [Releases](../../releases/latest):
 | --- | --- | --- |
 | macOS (Apple silicon) | `Guya-<version>-macOS-arm64.dmg` | M-series Macs |
 | macOS (Intel) | `Guya-<version>-macOS-x64.dmg` | Intel Macs |
-| Windows (x64 and arm64) | `Guya-<version>-Windows-Setup.exe` | One installer, both architectures inside |
-| Windows, without installing | `Guya-<version>-Windows-Portable.exe` | Runs from anywhere |
+| Windows (x64) | `Guya-<version>-Windows-x64-Setup.exe` | Installer |
+| Windows (arm64) | `Guya-<version>-Windows-arm64-Setup.exe` | Installer |
+| Windows, without installing | `Guya-<version>-Windows-x64-Portable.exe` | Runs from anywhere |
 | Linux (x64) | `Guya-<version>-Linux-x86_64.AppImage` | Portable; `chmod +x` and run |
 | Linux (x64, Debian) | `Guya-<version>-Linux-amd64.deb` | `sudo apt install ./Guya-...deb` |
 | Linux (arm64) | `Guya-<version>-Linux-arm64.AppImage` | arm64 machines |
+
+Releases are packaged on three runners, so the published files are the architecture
+those machines have: **macOS arm64**, **Windows x64** and **Linux x64**. The Intel Mac,
+arm64 Windows and arm64 Linux files are built by the same commands on a machine of that
+kind — `npm run dist:mac`, `npm run dist:win` and `npm run dist:linux` each build both.
 
 The builds are **not code-signed**, so the system will warn the first time:
 
@@ -74,11 +80,24 @@ The settings screen opens when there is no key yet.
 
 - **Waiting is not a dead end.** Escape is held while the app is busy and cancels the
   request, and the record button becomes a *Cancel* control while the answer is coming.
+  (On Linux/Wayland no app can grab Escape; there the shortcut ends the recording, and so
+  does the silence timer.)
 - **The orb tells you which state you are in.** It is blue while the microphone is
   opening and turns warm the moment it is actually live — speak after that, not before.
 - **Everything is a setting.** The two waits, the attempts per transcription, the
   model, the spoken language, and the instructions sent to the model. Each accepts a
   value the picker does not offer through *Custom…*.
+- **A recording nobody spoke into is not a question.** The app says "no speech detected"
+  and sends nothing — and if a reply ever comes back as a sentence *about* the request
+  instead of the transcript, it is discarded rather than typed into your window.
+
+### Quitting
+
+Closing the window hides it: the shortcut keeps working, which is the point of a
+background utility. To stop the app completely, open the window again and use **Quit
+Guya** at the bottom of the settings screen — on macOS, `⌘Q` from the menu does it. On
+Windows and Linux the setting is the only control that quits, because those systems give
+the app no menu bar.
 
 ## Privacy
 
@@ -106,6 +125,7 @@ The settings screen opens when there is no key yet.
 | Copy to clipboard | Copy the transcript when it arrives |
 | Paste automatically | Type it into the focused app (needs macOS Accessibility) |
 | Launch at login | Start the app when you sign in (installed builds only) |
+| Quit Guya | Stops the app; shown where there is no menu bar, since closing the window only hides it |
 
 ## Troubleshooting
 
@@ -116,7 +136,7 @@ The settings screen opens when there is no key yet.
 | "Quota reached. Try again in about N seconds." | The provider's rate limit. The app tells you the wait it was given instead of retrying into it. |
 | "This model is not available for your key." | The model was removed or is not enabled for that key: press *Refresh models* and pick another. |
 | The shortcut does nothing | Another app already owns that combination. The settings screen says so, keeps the previous shortcut, and lets you record a different one. |
-| Paste automatically does nothing | macOS Accessibility is not granted for Guya. The setting refuses to stay on and offers the exact pane to open. |
+| Paste automatically does nothing | macOS has two permissions for this and the app offers the pane it actually needs: **Accessibility** to send keystrokes, and — the first time — **Automation**, to let Guya drive System Events. If the transcript is on screen in Guya's own window, nothing is typed: there is nowhere sensible to type it. |
 | The transcript is empty but I spoke | The recording was quiet enough that the model heard nothing. *Stop after silence* and the input level in the recorder are the things to check. |
 
 ## Building from source
