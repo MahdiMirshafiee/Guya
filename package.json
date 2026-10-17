@@ -1,7 +1,7 @@
 {
   "name": "guya",
   "productName": "Guya",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Minimal local voice-to-text utility (Gemini) for macOS and Windows",
   "main": "src/main/index.js",
