@@ -66,6 +66,17 @@
     '  in its own script, in the order it was spoken.',
     '- Mixed scripts inside one sentence are correct output: never translate a word, never',
     '  transliterate or romanise it, and never move it into another language to even out the sentence.',
+    '- The mistake to avoid above all others on this job is letting the language the speaker started in',
+    '  take over the whole transcript. A speaker who is halfway through a Persian sentence and says an',
+    '  English word — a product, a brand, a technical term, a phrase from work — gets that word back',
+    '  with its Latin letters, spelled the way it was said. It is not translated into the language of',
+    '  the sentence, and it is not written in Persian letters. The same holds in both directions for',
+    '  every other pair of languages, for a single word as much as for a whole clause.',
+    '- A word keeps the letters of the language it was spoken in: never re-spell it to fit the sentence',
+    '  around it, never sound it out letter by letter in another alphabet, and never use the local form',
+    '  of a name that was not the form spoken.',
+    '- When you cannot tell which language a word was spoken in, write the letters that match what you',
+    '  heard rather than fitting it to the language of the sentence.',
     '- Punctuate and capitalise the way each language does — Persian and Arabic are written without',
     '  letter case, English and other Latin-script languages with it — and break sentences to match the',
     '  delivery, starting a new paragraph at a long pause.',
@@ -84,15 +95,21 @@
   var PROMPT_REVISION = 2;
 
   /* The one line that changes from recording to recording. It stays in English with
-   * the rest of the instructions, and the language it names is always the audio's. */
+   * the rest of the instructions, and the language it names is always the audio's.
+   *
+   * Naming a language was the line that did the damage: "the audio is in Persian" reads
+   * as an instruction about the whole transcript, and a model following it writes the
+   * English words of a Persian sentence in Persian letters. It says the main language
+   * now. The law about letters lives in the instructions above, where the user can read
+   * and change it; this turn stays a sentence about the recording. */
   function languageLine(language) {
     if (language && language !== 'auto') {
       return (
-        'The audio is in ' + GuyaI18n.languageLabel(language, 'en') + '. Transcribe it as spoken, and ' +
-        'if part of it is in another language, keep that part in that language.'
+        'The speaker is mainly talking in ' + GuyaI18n.languageLabel(language, 'en') + '. Every word in ' +
+        'another language stays in its own language and its own letters.'
       );
     }
-    return 'The audio may be in any language: transcribe every part in the language it is spoken in.';
+    return 'The audio may be in any language: transcribe every part in the language it is spoken in, in its own letters.';
   }
 
   return { DEFAULT_PROMPT: DEFAULT_PROMPT, PROMPT_REVISION: PROMPT_REVISION, languageLine: languageLine };
