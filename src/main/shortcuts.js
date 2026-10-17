@@ -9,6 +9,8 @@ const { state, onPhaseChange } = require('./state');
 const recorder = require('./recorder');
 
 const ESCAPE = 'Escape';
+/* Set GUYA_DEBUG=1 to watch the grab come and go; the end-to-end suite reads it. */
+const DEB = !!process.env.GUYA_DEBUG;
 let escapeRegistered = false;
 
 /* ------------------------------------------------------------ shortcuts ---- */
@@ -59,16 +61,38 @@ function applyShortcut(next) {
 }
 
 /* Escape belongs to whatever app the user is in, except while this app is doing
- * something the user is waiting on — recording, opening the microphone, or waiting
- * for the provider. While waiting there is no other way out. */
+ * something the user is waiting on — recording, opening the microphone, or waiting for
+ * the provider. While waiting there is no other way out.
+ *
+ * Wayland is the one desktop where this cannot be promised: a client there cannot grab a
+ * key, and the portal that stands in for grabbing hands out combinations the user picked
+ * in the desktop's own dialog rather than a bare Escape. Everywhere else it is grabbed and
+ * released with the phase. Where it cannot be, the shortcut itself still stops the
+ * recording, and so does the silence timer. */
+const ESCAPE_GRABBABLE = !(process.env.XDG_SESSION_TYPE === 'wayland' || process.env.WAYLAND_DISPLAY);
+
 onPhaseChange((phase) => {
   const holding = phase === 'recording' || phase === 'starting' || phase === 'transcribing';
   if (holding === escapeRegistered) return;
   escapeRegistered = holding;
+  if (!ESCAPE_GRABBABLE) {
+    if (DEB) console.log('[guya] escape capture: not possible on Wayland');
+    return;
+  }
   try {
-    if (holding) globalShortcut.register(ESCAPE, () => recorder.onEscape());
-    else globalShortcut.unregister(ESCAPE);
-    if (process.env.GUYA_DEBUG) console.log(`[guya] escape capture: ${holding ? 'on' : 'off'}`);
+    if (!holding) {
+      globalShortcut.unregister(ESCAPE);
+      if (DEB) console.log('[guya] escape capture: off');
+      return;
+    }
+    /* The return value is the answer, and it fails without throwing: another app can
+     * already hold Escape. Recording that as captured would mean never trying again. */
+    if (!globalShortcut.register(ESCAPE, () => recorder.onEscape())) {
+      escapeRegistered = false;
+      if (DEB) console.log('[guya] escape capture: unavailable (another app holds it)');
+      return;
+    }
+    if (DEB) console.log('[guya] escape capture: on');
   } catch (_) {
     escapeRegistered = !holding;
     console.warn('[guya] could not grab the Escape key');

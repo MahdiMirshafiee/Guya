@@ -19,6 +19,11 @@ const appProtocol = require('./protocol');
  * origin, and the CSP's 'self' then matches nothing at all. */
 appProtocol.registerScheme();
 
+/* A Wayland session hands global shortcuts out through a portal and nowhere else:
+ * without this the shortcut never fires on Linux/Wayland, and there is no error to
+ * see — `register` succeeds and the key simply does nothing. X11 is unaffected. */
+if (process.platform === 'linux') app.commandLine.appendSwitch('enable-features', 'GlobalShortcutsPortal');
+
 const platform = require('./platform');
 const menu = require('./menu');
 const permissions = require('./permissions');
