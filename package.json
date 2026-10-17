@@ -84,6 +84,7 @@
     "@noble/hashes": "^1.8.0"
   },
   "author": "Mahdi Mirshafiee",
+  "license": "MIT",
   "homepage": "https://github.com/MahdiMirshafiee/guya",
   "desktopName": "guya.desktop"
 }

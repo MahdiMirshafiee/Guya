@@ -130,3 +130,7 @@ scripts/        تولید آیکون
 ## فونت‌ها
 
 - [Vazirmatn](https://github.com/rastikerdar/vazirmatn) برای متن فارسی و [Inter](https://github.com/rsms/inter) برای متن لاتین، هر دو با پروانه‌ی SIL OFL 1.1 و به‌صورت لوکال در `src/renderer/fonts` (بدون نیاز به اینترنت).
+
+## مجوز
+
+MIT — © Mahdi Mirshafiee؛ متن کامل در `LICENSE`. فونت‌های Vazirmatn و Inter با پروانه‌ی SIL OFL 1.1 کنار خودشان در `src/renderer/assets/fonts/` هستند و آیکون‌ها از [Lucide](https://lucide.dev) با پروانه‌ی MIT.
