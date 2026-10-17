@@ -68,6 +68,7 @@ let noSpeechStopMs = DEFAULT_NO_SPEECH_STOP_MS; // nobody has spoken yet
 let voiceMs = 0;
 let gate = null;
 let endpointer = null;
+let lastChunkAt = 0; // when the last block of samples arrived, to notice a track that stops
 let lastGate = null;
 let frameVoiced = []; // one flag per entry of `chunks`
 let lastRoomFloor = 0.002; // the room is the same for the next recording: start where we left off
@@ -84,11 +85,18 @@ const orb = GuyaOrb.create(canvas, {
 
 /* ------------------------------------------------------------ level loop -- */
 
+/* How long a live track may go without delivering samples before the recording is ended
+ * rather than left running: long enough not to fire during a device handover, short
+ * enough that nobody waits for the five-minute cap. */
+const STARVED_TRACK_MS = 4000;
+
 /* The measurement runs on a timer, not on a frame: a hidden window has its frames
  * paused, and the panel's meter would freeze with it while the orb kept listening.
- * Everything the orb and the panel show comes from here. */
+ * Everything the orb and the panel show comes from here, and so does the check for a
+ * microphone that has stopped delivering. */
 function pump() {
   if (!analyser || !capturing) return;
+  watchForSilentTrack();
   if (!timeBuf) {
     timeBuf = new Float32Array(analyser.fftSize);
     freqBuf = new Float32Array(analyser.frequencyBinCount);
@@ -165,10 +173,12 @@ function beginMeasuring() {
   chunks = [];
   frameVoiced = [];
   voiceMs = 0;
+  lastChunkAt = Date.now();
 }
 
 function onChunk(chunk) {
   if ((!capturing && !flushing) || !gate) return;
+  lastChunkAt = Date.now();
   const frameMs = (chunk.length / (captureRate || GuyaAudio.TARGET_RATE)) * 1000;
   const g = gate.push(GuyaAudio.rms(chunk), frameMs);
   lastGate = g;
@@ -177,10 +187,25 @@ function onChunk(chunk) {
   frameVoiced.push(g.voiced);
   if (flushing) return; // the tail is audio, not a new reason to stop
   const reason = endpointer.push(g.voiced, frameMs);
-  if (reason) {
-    api.overlayAutoStopped(reason); // first: the main process must be ready for the audio that follows
-    stopCapture();
-  }
+  if (reason) endRecording(reason);
+}
+
+function endRecording(reason) {
+  api.overlayAutoStopped(reason); // first: the main process must be ready for the audio that follows
+  stopCapture();
+}
+
+/* A track that has gone quiet in the wrong way: it exists, it is not ended, and it is
+ * not delivering samples — a device handed over to another application, a context the
+ * system suspended, a headset that changed profile. Everything a recording does is
+ * driven by the samples arriving, so without this the meter froze, no silence ever
+ * arrived to end the recording, and it ran to the five-minute cap with the audio after
+ * the handover missing. Ending it keeps what was captured. */
+function watchForSilentTrack() {
+  if (!capturing || !gate) return;
+  if (Date.now() - lastChunkAt < STARVED_TRACK_MS) return;
+  if (process.env.GUYA_DEBUG) console.log('[guya] the microphone stopped delivering samples; ending the recording');
+  endRecording('track-stalled');
 }
 
 function micErrorKey(err) {
