@@ -29,6 +29,8 @@ const F = {
   pasteAfterTranscribe: document.getElementById('pasteAfterTranscribe'),
   launchAtLogin: document.getElementById('launchAtLogin'),
   uiLanguageSelect: document.getElementById('uiLanguageSelect'),
+  quitFootnote: document.getElementById('quitFootnote'),
+  quitApp: document.getElementById('quitApp'),
   pasteFootnote: document.getElementById('pasteFootnote'),
   pasteNotice: document.getElementById('pasteNotice'),
   openAccessibility: document.getElementById('openAccessibility'),
@@ -502,6 +504,10 @@ function initSettings() {
 
   on(F.copyToClipboard, 'change', () => saveAndRepaint({ copyToClipboard: F.copyToClipboard.checked }));
   on(F.launchAtLogin, 'change', () => saveAndRepaint({ launchAtLogin: F.launchAtLogin.checked }));
+
+  /* Only where there is no menu bar: macOS has Cmd+Q for this. */
+  if (api.platform !== 'darwin') F.quitFootnote.hidden = false;
+  on(F.quitApp, 'click', () => api.quit());
 
   // Seed the picker with the curated suggestions; "Refresh models" replaces them
   // with what the key can actually use.

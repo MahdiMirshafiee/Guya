@@ -194,6 +194,14 @@
           </div>
         </div>
 
+        <!-- Windows and Linux have no menu bar, and the window's own close button only
+             hides the window — because the shortcut has to keep working. Without this
+             there was no way at all to stop a running Guya on those systems. -->
+        <p class="footnote" id="quitFootnote" hidden>
+          <span data-i18n="ui.quitFootnote"></span>
+          <button id="quitApp" class="btn-quiet" type="button" data-i18n="ui.quit"></button>
+        </p>
+
         <p class="status" id="settingsStatus"></p>
       </main>
     </div>

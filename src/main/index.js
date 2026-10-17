@@ -18,6 +18,7 @@ const appProtocol = require('./protocol');
  * this cannot live inside start(): without it the pages are served from an opaque
  * origin, and the CSP's 'self' then matches nothing at all. */
 appProtocol.registerScheme();
+
 const platform = require('./platform');
 const menu = require('./menu');
 const permissions = require('./permissions');
@@ -69,11 +70,11 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(start);
   app.on('activate', () => windows.showPanel());
 
-  /* A background app: having no window must not quit it on macOS, but the other
-   * systems have no dock to come back from, so closing the window is quitting. */
-  app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
-  });
+  /* Nothing quits the app by emptying the screen, on any platform. The shortcut is the
+   * product; a window that is closed (or a renderer that dies) must not take it away.
+   * Subscribing at all is what stops Electron's default behaviour of quitting when the
+   * last window closes — the comment is the handler. */
+  app.on('window-all-closed', () => {});
 
   app.on('before-quit', () => {
     app.isQuitting = true;

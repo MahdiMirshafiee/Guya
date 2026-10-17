@@ -97,6 +97,15 @@ function register() {
     return { ok: true };
   });
 
+  /* The window's close button hides the window on every platform, so that the
+   * shortcut survives it — which leaves the settings screen as the only way out on
+   * Windows and Linux, where there is no menu bar to quit from. */
+  ipcMain.handle('app:quit', () => {
+    app.isQuitting = true;
+    app.quit();
+    return { ok: true };
+  });
+
   ipcMain.handle('permissions:accessibility', () => systemIntegration.accessibilityStatus());
 
   /* Makes macOS put up its own dialog for the Accessibility pane. */

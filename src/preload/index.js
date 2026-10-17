@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('guya', {
   cancelRecording: () => ipcRenderer.invoke('recording:cancel'),
   copyToClipboard: (text) => ipcRenderer.invoke('clipboard:copy', text),
   openPrivacySettings: (kind) => ipcRenderer.invoke('system:open-privacy', kind),
+  quit: () => ipcRenderer.invoke('app:quit'),
   accessibilityStatus: () => ipcRenderer.invoke('permissions:accessibility'),
   pasteSupport: () => ipcRenderer.invoke('permissions:paste'),
   requestAccessibility: () => ipcRenderer.invoke('permissions:request-accessibility'),

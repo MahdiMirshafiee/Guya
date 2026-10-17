@@ -80,18 +80,16 @@ function createPanel() {
     if (panelWin && !panelWin.isDestroyed()) panelWin.reload();
   });
 
-  /* The overlay window is hidden rather than closed, so it would keep the app alive
-   * for ever on a platform where closing the window is how the user quits. */
-  panelWin.on('closed', () => {
-    if (!IS_MAC && !app.isQuitting) app.quit();
-  });
-
+  /* Closing the window hides it, on every platform. The app's whole job is the
+   * shortcut, and a shortcut that stops working because the window was closed is not a
+   * background utility — on Windows and Linux, where the window is closed with the
+   * system's own button, that was exactly what happened. Quitting is the menu's job
+   * (`Ctrl+Q` while the window is open); opening the app again brings the window back,
+   * because a second launch asks the first one to show it. */
   panelWin.on('close', (event) => {
-    // On macOS the app keeps living in the dock; elsewhere closing means quit.
-    if (IS_MAC && !app.isQuitting) {
-      event.preventDefault();
-      panelWin.hide();
-    }
+    if (app.isQuitting) return;
+    event.preventDefault();
+    panelWin.hide();
   });
   return panelWin;
 }

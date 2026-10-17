@@ -115,6 +115,11 @@
     'ui.copy': { fa: 'کپی در کلیپ‌بورد', en: 'Copy to clipboard' },
     'ui.paste': { fa: 'جای‌گذاری خودکار', en: 'Paste automatically' },
     'ui.launchAtLogin': { fa: 'اجرا هنگام ورود', en: 'Launch at login' },
+    'ui.quit': { fa: 'خروج از گویا', en: 'Quit Guya' },
+    'ui.quitFootnote': {
+      fa: 'بستن این پنجره گویا را روشن نگه می‌دارد؛ برای خروج کامل:',
+      en: 'Closing this window keeps Guya running — to stop it completely:'
+    },
     'ui.lastTranscript': { fa: 'آخرین متن', en: 'Last transcript' },
     'ui.languageName': { fa: 'فارسی', en: 'English' },
     'ui.refreshModels': { fa: 'دریافت مدل‌ها', en: 'Refresh models' },
