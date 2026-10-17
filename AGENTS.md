@@ -14,7 +14,9 @@ app). An orb floats above the desktop so the microphone is never live invisibly.
 
 - `DESIGN.md` is the source of truth for the interface. **If you change how
   something looks or behaves, change that document in the same change.**
-- `README.md` is the user-facing guide, in Persian, with English technical terms.
+- `README.md` is the user-facing guide and the primary one, in English; `README.fa.md`
+  is the same guide in Persian. Both are maintained together — a change to how the app
+  behaves belongs in both, or the repository starts telling two stories.
 - `src/main/` is the main process, split by responsibility: `index.js` starts and
   wires, `recorder.js` owns a recording session, `state.js` owns the phase,
   `ipc.js` is the whole contract with the renderers, `system.js` is everything the

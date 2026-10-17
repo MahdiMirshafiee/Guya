@@ -1,136 +1,182 @@
-# Guya — تبدیل گفتار به متن با جمنای
+# Guya · گویا
 
-یک اپ دسکتاپ کوچک برای macOS و ویندوز: یک شورت‌کات می‌زنید، صحبت می‌کنید، دوباره همان شورت‌کات را می‌زنید و متن در کلیپ‌بورد است.
+**Voice to text on your desktop, with your own Gemini key.** One shortcut records,
+the audio goes straight from your machine to Google's API, and the transcript is on
+your clipboard. macOS, Windows and Linux.
 
-- هیچ جمله‌ای در برنامه هاردکد نشده: همه‌ی متن‌ها از یک دیکشنری دوزبانه می‌آیند و با عوض کردن زبان، حتی پیام‌های خطا و tooltipها هم عوض می‌شوند (تست خودکار جلوی برگشت هاردکد را می‌گیرد)
-- یک صفحه‌ی اصلی مینیمال (فرم موج زنده، تایمر، یک خط وضعیت، متن) و **یک صفحه‌ی تنظیمات** که همه‌ی تنظیمات آنجاست
-- بدون دکمه‌ی ذخیره: هر تنظیم همان لحظه اعمال می‌شود
-- شیشه‌ی مایع با زبان طراحی اپل: vibrancy در macOS، acrylic در ویندوز، تم روشن و تیره
-- همه‌ی قواعد طراحی در [DESIGN.md](DESIGN.md) مستند شده است (توکن‌ها، اصول، لاگ تصمیم‌ها، چک‌لیست)
-- اورب شنیداری: کره‌ی شیشه‌ای با ابرهای رنگی که هر کدام به یک باند فرکانسی صدا واکنش می‌دهند
-- دوزبانه: فارسی (وزیرمتن) و انگلیسی (Inter)، با چیدمان راست‌به‌چپ و چپ‌به‌راست خودکار
-- تم روشن و تیره، هماهنگ با ظاهر سیستم
-- بدون آیکون در نوار بالای صفحه؛ اپ در Dock (مک) یا Taskbar (ویندوز) است
-- تبدیل صدا با API جمنای؛ هیچ سرور میانی‌ای وجود ندارد
+[![CI](https://github.com/MahdiMirshafiee/Guya/actions/workflows/ci.yml/badge.svg)](https://github.com/MahdiMirshafiee/Guya/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> صدا فقط برای تبدیل شدن به متن به سرورهای گوگل فرستاده می‌شود. کلید API و تنظیمات روی همین رایانه ذخیره می‌شوند.
+[English](README.md) · [فارسی](README.fa.md)
 
-## اجرا
-
-نیاز به Node.js نسخه ۲۰ یا بالاتر:
-
-```bash
-npm install
-npm start
-```
-
-بار اول که اپ باز می‌شود پنل تنظیمات هم نمایش داده می‌شود:
-
-1. کلید API جمنای را در فیلد «کلید API» بگذارید (از <https://aistudio.google.com/apikey>).
-2. با دکمه‌ی «دریافت مدل‌ها» فهرست مدل‌های مجاز کلیدتان را بگیرید و مدل را انتخاب کنید (`gemini-2.5-flash` برای ضبط سریع و ارزان انتخاب خوبی است).
-3. با «تست کلید» مطمئن شوید همه‌چیز درست است، بعد «ذخیره» را بزنید.
-
-## استفاده
-
-سه راه برای شروع ضبط دارید و در همه‌ی حالت‌ها، ضبط با هر یک از این‌ها تمام می‌شود:
-
-| کار | نتیجه |
+| Recording | Settings |
 | --- | --- |
-| شورت‌کات | یک‌بار بزنید = شروع، بار دوم = توقف (`⌘⇧Space` در مک، `Ctrl+Shift+Space` در ویندوز) |
-| ۳ ثانیه سکوت بعد از حرف زدن | ضبط خودش تمام می‌شود و برای تبدیل می‌رود |
-| ۸ ثانیه بدون این‌که کسی حرف بزند | ضبط بی‌نتیجه تمام می‌شود و هیچ درخواستی فرستاده نمی‌شود |
-| کلید Escape | حین ضبط: تمام کردن و فرستادن برای تبدیل؛ حین انتظار: لغو کردن |
+| ![The recorder](docs/recorder-en.png) | ![The settings screen](docs/settings-en.png) |
 
-- **Escape** فقط تا وقتی برنامه مشغول است گرفته می‌شود (ضبط، روشن شدن میکروفون، یا انتظار برای پاسخ) و بلافاصله بعد از آن آزاد می‌شود، تا در بقیه‌ی برنامه‌ها مزاحم نباشد. اگر وسط ضبط بزنید ضبط تمام می‌شود و برای تبدیل می‌رود؛ اگر بعد از آن بزنید — وقتی منتظر جواب هستید — کل درخواست لغو می‌شود. همان کار با دکمه‌ی وسط برنامه هم انجام می‌شود که در این حالت «انصراف» است.
-- **جهت متن از خودِ متن می‌آید، نه از زبان رابط**: متن فارسی همیشه راست‌به‌چپ خوانده می‌شود حتی اگر برنامه انگلیسی باشد (و برعکس). هر پاراگراف جداگانه تشخیص داده می‌شود، پس اگر جمله با یک کلمه‌ی انگلیسی شروع شود و بقیه فارسی باشد، همان پاراگراف راست‌به‌چپ می‌ماند و آن کلمه هم سر جای درستش می‌نشیند.
-- **توقف خودکار** دو زمان جدا دارد: «توقف روی سکوت» بعد از این‌که حرف زدید (پیش‌فرض ۳ ثانیه) و «توقف اگر کسی صحبت نکند» وقتی هنوز کسی چیزی نگفته (پیش‌فرض ۸ ثانیه). زمان‌ها با اندازه‌گیری سطح اتاق کار می‌کنند — فَن، چراغ و صدای برخورد کلید آن‌ها را گول نمی‌زند — و اگر عدد دلخواهی بخواهید در همان فهرست، گزینه‌ی «دلخواه…» را انتخاب کنید و ثانیه را بنویسید؛ هر عددی بین ۱ تا ۱۲۰ ثانیه پذیرفته می‌شود.
-- روی کادر شورت‌کات در پنل کلیک کنید تا هر ترکیبی که می‌خواهید ثبت کنید (Esc = لغو). اگر ترکیب اشغال باشد، همان شورت‌کات قبلی فعال می‌ماند و پیام هشدار نشان داده می‌شود.
-- در پنجره‌ی برنامه هم یک فرم موج زنده، تایمر و یک خط وضعیت می‌بینید؛ متن نهایی همان‌جا و در کلیپ‌بورد حاضر است.
-- وقتی ضبط شروع می‌شود، یک اورب کوچک و نورانی وسطِ بالای صفحه هم ظاهر می‌شود (روی همان مانیتوری که نشانگر ماوس آنجاست). داخل این کره‌ی شیشه‌ای چهار ابر رنگی شناور است و هر ابر به یک باند فرکانسی صدای شما وصل است؛ یعنی خودِ اورب نقش نمایشگر سطح صدا را هم دارد. این پنجره کلیک‌ها را از برنامه‌ی زیرین نمی‌دزدد و هیچ فوکوسی نمی‌گیرد.
-- متن به‌طور پیش‌فرض در کلیپ‌بورد کپی می‌شود. اگر «جای‌گذاری خودکار» را روشن کنید، در برنامه‌ای که در فوکوس است هم تایپ می‌شود.
-- ضبط بعد از ۵ دقیقه خودکار متوقف می‌شود.
+## What it does
 
-## تنظیمات
+- **One key, one job.** Press the shortcut, speak, press it again. The transcript is
+  copied to the clipboard — and typed into whatever app has focus, if you ask for that.
+- **A real equalizer.** The window's meter and the floating orb are both drawn from
+  the microphone: forty-eight bands, measured in decibels against the noise floor of
+  the room you are actually in, so noise reads as nothing and your voice moves it.
+- **It stops on its own.** Three seconds after you stop speaking, or eight seconds
+  into a recording where nobody has spoken — and in that second case nothing is sent
+  to the provider at all.
+- **Two languages, end to end.** The interface is Persian or English, and a transcript
+  is laid out by its own language, not the interface's: Persian reads right-to-left
+  inside an English window.
+- **Nothing between you and Google.** There is no server of the app's own; the key is
+  stored encrypted with the system keychain (or DPAPI on Windows) and goes nowhere else.
+- **No standing microphone.** There is no wake word and no always-on listening: the
+  device opens when a recording starts and closes the moment it stops.
 
-| گزینه | کار |
+## Install
+
+Download the file for your system from [Releases](../../releases/latest):
+
+| System | File | Notes |
+| --- | --- | --- |
+| macOS (Apple silicon) | `Guya-<version>-macOS-arm64.dmg` | M-series Macs |
+| macOS (Intel) | `Guya-<version>-macOS-x64.dmg` | Intel Macs |
+| Windows (x64) | `Guya-<version>-Windows-x64-Setup.exe` | Installer; the `Portable` build needs no install |
+| Windows (arm64) | `Guya-<version>-Windows-arm64-Setup.exe` | Windows on ARM |
+| Linux (x64) | `Guya-<version>-Linux-x64.AppImage` | Portable; `chmod +x` and run |
+| Linux (x64, Debian) | `Guya-<version>-Linux-x64.deb` | `sudo apt install ./Guya-...deb` |
+| Linux (arm64) | `Guya-<version>-Linux-arm64.AppImage` | arm64 machines |
+
+The builds are **not code-signed**, so the system will warn the first time:
+
+- **macOS** — "Guya cannot be opened because the developer cannot be verified":
+  right-click the app and choose *Open*, or
+  `xattr -dr com.apple.quarantine /Applications/Guya.app`.
+- **Windows** — SmartScreen says "Windows protected your PC": *More info* → *Run anyway*.
+- **Linux** — the AppImage needs `--no-sandbox` on some distributions if Chrome's
+  sandbox cannot be used: `./Guya-*.AppImage --no-sandbox`.
+
+## First run
+
+The settings screen opens when there is no key yet.
+
+1. Paste a Gemini API key from <https://aistudio.google.com/apikey>.
+2. Press **Refresh models** and pick one. `gemini-2.5-flash` is a good default;
+   `flash-lite` is faster, `flash` is more accurate for Persian.
+3. Press **Test key** to check it before you rely on it.
+
+## Using it
+
+| Action | Result |
 | --- | --- |
-| کلید API | کلید Gemini؛ فقط روی همین دستگاه ذخیره می‌شود |
-| مدل | با «دریافت مدل‌ها» از API خوانده می‌شود؛ دستی هم قابل تایپ است |
-| زبان گفتار | تشخیص خودکار یا زبان مشخص، برای دقت بیشتر |
-| دستور و زمینه | توضیح اختیاری برای مدل؛ مثلاً واژه‌های خاص و اصطلاحات فنی خودتان |
-| شورت‌کات ضبط | ترکیب شروع و توقف |
-| توقف خودکار روی سکوت | خاموش، ۳، ۵، ۱۰ یا ۲۰ ثانیه (پیش‌فرض ۱۰) |
-| کپی در کلیپ‌بورد | کپی خودکار متن بعد از تبدیل |
-| جای‌گذاری خودکار | تایپ متن در برنامه‌ی فعال (نیاز به دسترسی Accessibility در مک) |
-| اجرا هنگام ورود | اجرای خودکار اپ بعد از روشن شدن سیستم (فقط در نسخه‌ی نصب‌شده) |
+| The shortcut | Press to start, press again to stop (`⌘⇧Space` on macOS, `Ctrl+Shift+Space` elsewhere) |
+| Stop after silence | 3 seconds after your last word the recording ends and is transcribed |
+| Stop if nobody speaks | 8 seconds of nothing ends the recording with **no request sent** |
+| Escape | While recording: stop and transcribe. While waiting: cancel |
 
-دکمه‌های بالا/پایین پنل: `فا` / `EN` زبان رابط را عوض می‌کند؛ متن دستور پیش‌فرض هم اگر دست‌نخورده باشد با زبان هم‌راستا می‌شود.
+- **Waiting is not a dead end.** Escape is held while the app is busy and cancels the
+  request, and the record button becomes a *Cancel* control while the answer is coming.
+- **The orb tells you which state you are in.** It is blue while the microphone is
+  opening and turns warm the moment it is actually live — speak after that, not before.
+- **Everything is a setting.** The two waits, the attempts per transcription, the
+  model, the spoken language, and the instructions sent to the model. Each accepts a
+  value the picker does not offer through *Custom…*.
 
-## درباره‌ی میکروفون
+## Privacy
 
-میکروفون فقط در حین ضبط باز است و بلافاصله بعد از توقف بسته می‌شود؛ هیچ گوش‌دادن دائمی یا کلمه‌ی فعال‌سازی‌ای وجود ندارد. (نسخه‌ی اول یک کلمه‌ی فعال‌سازی داشت که برای تشخیص، میکروفون را همیشه باز نگه می‌داشت و هر عبارت را به API می‌فرستاد؛ چون هزینه‌ی حریم خصوصی و تأخیرش از فایده‌اش بیشتر بود حذف شد.)
+- **Audio** is sent to the Gemini API with your key, and nowhere else. There is no
+  server in the middle, no account, no telemetry, no analytics.
+- **The key** is written encrypted using the operating system's own service (the
+  keychain on macOS, DPAPI on Windows); a system without one keeps it in the settings
+  file, with permissions set to the owner.
+- **Settings** live in `~/Library/Application Support/Guya/settings.json` on macOS and
+  `%APPDATA%\Guya\settings.json` on Windows.
+- **The microphone** is open only while recording. The app refuses to type into other
+  apps until the system has granted Accessibility, rather than failing later.
 
-## دسترسی‌ها
+## Settings
 
-- **میکروفون**: در مک بار اول که ضبط می‌کنید، سیستم اجازه می‌خواهد. اگر رد کردید، از تنظیمات پنل یا مسیر «تنظیمات سیستم › حریم خصوصی و امنیت › میکروفون» می‌توانید اجازه بدهید.
-- **دکمه‌های پنجره**: تا وقتی نشانگر ماوس به گوشه‌ی بالا-چپ نرفته پنهان می‌مانند تا چیزی در چیدمان برایشان جا باز نکند. با `⌘W` هم بسته می‌شود (منوی Window).
+| Setting | What it does |
+| --- | --- |
+| API key | Your Gemini key, stored encrypted on this machine |
+| Model | Read from the API with *Refresh models*; can also be typed |
+| Spoken language | Auto-detect, or one language for more accuracy |
+| Stop after silence | Off, or 1–120 seconds (3 by default) |
+| Stop if nobody speaks | Off, or 1–120 seconds (8 by default) |
+| Attempts | How many times a failed request is retried (3 by default) |
+| System prompt | The instructions sent with every recording; editable, and resettable |
+| Copy to clipboard | Copy the transcript when it arrives |
+| Paste automatically | Type it into the focused app (needs macOS Accessibility) |
+| Launch at login | Start the app when you sign in (installed builds only) |
 
-- **دسترس‌پذیری (فقط برای جای‌گذاری خودکار)**: وقتی گزینه‌ی «جای‌گذاری خودکار» را روشن کنی، مک خودش دیالوگ اجازه را نشان می‌دهد و اپ در همان صفحه یک دکمه برای باز کردن «تنظیمات سیستم › حریم خصوصی و امنیت › دسترس‌پذیری» می‌گذارد. **تا وقتی اجازه داده نشود آن گزینه روشن نمی‌ماند** و به‌جایش متن در کلیپ‌بورد کپی می‌شود؛ به‌محض دادن اجازه، اپ متوجه می‌شود و گزینه را خودش روشن می‌کند.
+## Troubleshooting
 
-## نصب روی مک
+| What you see | What it means |
+| --- | --- |
+| "No speech detected in that audio." | The app measured no speech in the recording — usually a muted input device or a microphone that is not the one you think. Check the input device in your system settings. |
+| "No Gemini API key yet." | Add one in the settings screen. |
+| "Quota reached. Try again in about N seconds." | The provider's rate limit. The app tells you the wait it was given instead of retrying into it. |
+| "This model is not available for your key." | The model was removed or is not enabled for that key: press *Refresh models* and pick another. |
+| The shortcut does nothing | Another app already owns that combination. The settings screen says so, keeps the previous shortcut, and lets you record a different one. |
+| Paste automatically does nothing | macOS Accessibility is not granted for Guya. The setting refuses to stay on and offers the exact pane to open. |
+| The transcript is empty but I spoke | The recording was quiet enough that the model heard nothing. *Stop after silence* and the input level in the recorder are the things to check. |
 
-نسخه‌ی ساخته‌شده در `/Applications/Guya.app` نصب شده است. برای ساخت و نصب دوباره:
+## Building from source
+
+Node 22 or newer (the end-to-end harness uses the global `WebSocket`).
 
 ```bash
-npm run install:mac
+npm ci          # exact dependency tree
+npm start       # run it
+npm test        # unit tests + the structure gate
+npm run e2e     # launches the app with a fake microphone and drives the interface
 ```
 
-این کار می‌سازد، در `/Applications/Guya.app` جای‌گذاری می‌کند و اپ را به Launch Services معرفی می‌کند — بدون این ثبت، اپی که یک‌بار از پوشه‌ی `dist` باز شده باشد ممکن است در Launchpad دیده نشود.
-
-اپ بدون امضای دیجیتال ساخته می‌شود (چون روی همین دستگاه ساخته شده، Gatekeeper مانع اجرایش نمی‌شود). آیکون باندل از `build/icon.png` ساخته می‌شود.
-
-## ساخت نسخه‌ی نصبی
-
-سه پلتفرم، هر کدام روی سیستم خودش بهترین نتیجه را می‌دهد (deb به `dpkg` نیاز دارد، AppImage به `appimagetool`، و بسته‌بندی ویندوز روی ویندوز):
+Packaging, per platform:
 
 ```bash
-npm run dist:this   # همان سیستمی که رویش هستی
-npm run dist:mac    # dmg + zip
-npm run dist:win    # نصب‌کننده nsis + نسخه‌ی portable
-npm run dist:linux  # AppImage + deb
-npm run dist        # هر سه
+npm run dist:this    # the system you are on
+npm run dist:mac     # dmg + zip, arm64 and x64
+npm run dist:win     # nsis installer + portable, x64 and arm64
+npm run dist:linux   # AppImage + deb, x64 and arm64
 ```
 
-- روی مک می‌توان AppImage را هم ساخت (تست شده)، ولی `deb` و بسته‌بندی ویندوز را روی سیستم خودشان بساز یا بگذار CI انجام دهد.
-- خروجی‌ها در `dist/` می‌افتند و در گیت نیستند. روی مک، `npm run install:mac` هم می‌سازد و هم نصب می‌کند.
-- بسته‌بندی به چند گیگابایت فضای خالی نیاز دارد.
-- آیکون اپ همان اورب است: کره‌ای نورپردازی‌شده که با `node scripts/make-icons.js` ساخته می‌شود. مک نسخه‌ی پرِ بوم را می‌گیرد و خودش ماسک و نور لبه را اضافه می‌کند؛ ویندوز و لینوکس همان تصویر را از پیش برش‌خورده می‌گیرند. فایل‌ها: `build/icon.png` (مک)، `build/icon-shape.png` و `build/icons/` (ویندوز و لینوکس) و `assets/icon.png` برای آیکون زمان اجرا.
+Artifacts land in `dist/` and are not committed. Each platform packages best on its
+own system, which is what CI does — and a `.deb` needs `dpkg` while an AppImage needs
+`appimagetool`, both of which the workflows install for you.
 
-## تست
-
-```bash
-npm test     # تست‌های واحد (هسته‌ی صوتی، شورت‌کات، تنظیمات، کلاینت جمنای، ترجمه‌ها)
-npm run e2e  # تست انتها-به-انتها: اپ را با میکروفون جعلی اجرا می‌کند و رابط را می‌سنجد
-```
-
-تست‌های واحد هسته‌ی صوتی (تبدیل به WAV، نمونه‌برداری مجدد)، تحلیل شورت‌کات، ذخیره‌ی تنظیمات، کلاینت جمنای (با `fetch` جعلی) و دوزبانه بودن پیام‌ها را پوشش می‌دهند. تست انتها-به-انتها اپ را واقعاً اجرا می‌کند، با Chromium's fake microphone ضبط می‌کند و همان چیزهایی را می‌سنجد که کاربر می‌بیند (فرم موج، تایمر، لودر، متن، تنظیمات، و اینکه اورب شناور وقتی پنجره در جلوست نمایش داده نشود).
-
-## ساختار پروژه
+## How it is built
 
 ```
-src/main/       فرایند اصلی: پنجره‌ها، شورت‌کات سراسری، جمنای، کلیپ‌بورد، پروتکل app://
-src/preload/    پل امن بین رندرر و فرایند اصلی
-src/renderer/   پنل تنظیمات و اورلی دایره‌ای (+ فونت‌ها)
-src/shared/     ماژول‌های مشترک: صدا، دوزبانه، شورت‌کات، پیش‌فرض‌ها
-scripts/        تولید آیکون
+src/main/       the main process: windows, the global shortcut, the provider, the
+                clipboard, the app:// protocol that serves the renderers
+src/preload/    the bridge between the renderers and the main process
+src/renderer/   the panel (recorder + settings) and the floating overlay
+src/shared/     code both processes use: audio, the dictionary, the prompt,
+                the shortcut parser, the bidi rules
+scripts/        the icon generator, the release script, the structure gate
 ```
 
-نقطه‌ی ذخیره‌ی تنظیمات: `~/Library/Application Support/Guya/settings.json` در مک و `%APPDATA%\Guya\settings.json` در ویندوز.
+The main process is split by responsibility — `index.js` wires, `recorder.js` owns a
+session, `state.js` owns the phase, `gemini.js` talks to the API, `system.js` asks the
+OS for things — and `scripts/check-structure.js` fails the build on a require cycle, an
+import that names something a module does not export, a call to a name a module never
+defines, or a shared module that reaches for Electron.
 
-## فونت‌ها
+Two documents carry the rules: [`DESIGN.md`](DESIGN.md) is the interface contract
+(tokens, components, and a decision log that records what was rejected and why), and
+[`AGENTS.md`](AGENTS.md) is the working agreement for anyone changing the code —
+including the non-negotiables the test suite enforces, such as no user-visible string
+outside the dictionary and no microphone outside a recording.
 
-- [Vazirmatn](https://github.com/rastikerdar/vazirmatn) برای متن فارسی و [Inter](https://github.com/rsms/inter) برای متن لاتین، هر دو با پروانه‌ی SIL OFL 1.1 و به‌صورت لوکال در `src/renderer/fonts` (بدون نیاز به اینترنت).
+## Fonts and icons
 
-## مجوز
+- [Vazirmatn](https://github.com/rastikerdar/vazirmatn) for Persian and
+  [Inter](https://github.com/rsms/inter) for Latin, both SIL OFL 1.1, bundled locally
+  with their license files in `src/renderer/assets/fonts/` — nothing is fetched at
+  runtime.
+- Icons from [Lucide](https://lucide.dev) (MIT), drawn inline.
+- The app icon is the orb itself: a lit sphere on a tile that follows Apple's icon
+  grid, generated by `scripts/make-icons.js`.
 
-MIT — © Mahdi Mirshafiee؛ متن کامل در `LICENSE`. فونت‌های Vazirmatn و Inter با پروانه‌ی SIL OFL 1.1 کنار خودشان در `src/renderer/assets/fonts/` هستند و آیکون‌ها از [Lucide](https://lucide.dev) با پروانه‌ی MIT.
+## License
+
+MIT — © Mahdi Mirshafiee. See [`LICENSE`](LICENSE).
