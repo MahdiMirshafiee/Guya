@@ -2038,6 +2038,57 @@ test('the key is not written in the clear when the system can keep it', () => {
   else delete require.cache[storePath];
 });
 
+test('a key that cannot be read this launch is not a key that gets deleted', () => {
+  /* The keychain is not always reachable at the moment the app starts — a Linux session
+   * whose keyring is not up yet, a macOS keychain entry the app may no longer read. The
+   * ciphertext stayed in the file but was dropped from memory, and the next save wrote a
+   * file without it: changing the interface language destroyed the user's key. */
+  const file = store.path;
+  const saved = fs.readFileSync(file, 'utf8');
+  const storePath = require.resolve('../src/main/store.js');
+  const cached = require.cache[storePath];
+
+  /* The fake service prefixes what it stores with `enc:` and takes it off again, so a
+   * ciphertext it can read is the base64 of that. */
+  const readableLater = Buffer.from('enc:AIzaSy-restored', 'utf8').toString('base64');
+  fs.writeFileSync(file, JSON.stringify({ apiKey: '', apiKeyEnc: readableLater, model: 'gemini-2.5-flash' }));
+  fakeSafeStorage.available = true;
+  const realDecrypt = fakeSafeStorage.decryptString;
+  fakeSafeStorage.decryptString = () => {
+    throw new Error('The specified item could not be found in the keychain.');
+  };
+  delete require.cache[storePath];
+  let reloaded = require(storePath);
+  assert.strictEqual(reloaded.read().apiKey, '', 'the key cannot be read this launch');
+
+  reloaded.update({ uiLanguage: 'en' });
+  const afterUnrelated = fs.readFileSync(file, 'utf8');
+  assert.ok(afterUnrelated.indexOf(readableLater) !== -1, 'and the ciphertext is still on disk: ' + afterUnrelated.slice(0, 160));
+
+  /* It is readable again the moment the keychain is: the same launch, the next one. */
+  fakeSafeStorage.decryptString = realDecrypt;
+  delete require.cache[storePath];
+  reloaded = require(storePath);
+  assert.strictEqual(reloaded.read().apiKey, 'AIzaSy-restored', 'the key comes back');
+
+  /* And a save that does decide about the key still decides. */
+  delete require.cache[storePath];
+  reloaded = require(storePath);
+  fakeSafeStorage.decryptString = () => {
+    throw new Error('still gone');
+  };
+  reloaded.read();
+  reloaded.update({ apiKey: '' });
+  assert.ok(!/"apiKeyEnc"/.test(fs.readFileSync(file, 'utf8')), 'clearing the field clears the key');
+
+  fakeSafeStorage.decryptString = realDecrypt;
+  fakeSafeStorage.available = true;
+  fs.writeFileSync(file, saved);
+  delete require.cache[storePath];
+  if (cached) require.cache[storePath] = cached;
+  else delete require.cache[storePath];
+});
+
 test('the settings file never carries the report on the last save', () => {
   /* `update()` tells the caller whether the bytes reached the disk. That report was
    * written into the cache and from there into settings.json, where it would sit

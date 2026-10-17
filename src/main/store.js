@@ -14,8 +14,13 @@ const FILE = path.join(app.getPath('userData'), 'settings.json');
  * is a limit nobody would notice until the transcript was subtly wrong. It is here
  * to keep a runaway paste out of the settings file, not to size the instructions. */
 const MAX_PROMPT_CHARS = 8000;
-/* The app used to be called V2T: carry a configured install over rather than
- * asking for the key again. */
+/* The app used to be called V2T, and a configured install is carried over rather than
+ * asked for its key again. The file is copied whole, which is what makes the other
+ * settings survive; the *encrypted* key in it only survives where the system's
+ * encryption is not tied to the app that wrote it — DPAPI on Windows, which is per user.
+ * On macOS the keychain entry belongs to the previous app name, so that launch shows "no
+ * key yet" and the user types it once. The ciphertext is kept either way (see
+ * `keptCiphertext`), so nothing is destroyed by the rename. */
 const LEGACY_FILE = path.join(path.dirname(app.getPath('userData')), 'V2T', 'settings.json');
 const LANGUAGE_CODES = SPOKEN_LANGUAGES.map((l) => l.code);
 
@@ -120,6 +125,13 @@ function decryptKey(raw) {
   return null;
 }
 
+/* A key that could not be read this launch is not a key that should be deleted: the
+ * ciphertext stays in the file, untouched, for the launch that can read it. Writing the
+ * settings file without it — which is what happened on the next save, whatever that save
+ * was about — is the app destroying the user's key because the keychain was not
+ * reachable at the moment it looked. */
+let keptCiphertext = null;
+
 function read() {
   if (cache) return cache;
   migrateLegacy();
@@ -141,7 +153,12 @@ function read() {
   cache = sanitize(raw, DEFAULTS);
   if (raw) {
     const decrypted = decryptKey(raw);
-    if (decrypted !== null) cache.apiKey = decrypted;
+    if (decrypted !== null) {
+      cache.apiKey = decrypted;
+      keptCiphertext = null;
+    } else if (typeof raw.apiKeyEnc === 'string' && raw.apiKeyEnc) {
+      keptCiphertext = raw.apiKeyEnc;
+    }
   }
   seedPrompt();
   return cache;
@@ -154,10 +171,14 @@ function serializable(settings) {
     try {
       out.apiKeyEnc = safeStorage.encryptString(out.apiKey).toString('base64');
       out.apiKey = '';
+      return out;
     } catch (err) {
       console.warn('[store] could not encrypt the key:', err.message);
     }
   }
+  /* Nothing to write in the clear, and a key on disk that this launch could not read:
+   * it is kept as it was. */
+  if (!out.apiKey && keptCiphertext) out.apiKeyEnc = keptCiphertext;
   return out;
 }
 
@@ -178,7 +199,12 @@ function write(next) {
 /* Merges a partial update and persists it. Returns the settings, so an existing
  * caller keeps working; `update.ok` says whether it reached the disk. */
 function update(partial) {
-  const result = write(Object.assign({}, read(), partial || {}));
+  const patch = partial || {};
+  /* A save that says nothing about the key is not a decision about the key: an unreadable
+   * one is left on disk for the launch that can read it. A save that carries the field —
+   * including one that empties it — is the user's decision, and it is obeyed. */
+  if (Object.prototype.hasOwnProperty.call(patch, 'apiKey')) keptCiphertext = null;
+  const result = write(Object.assign({}, read(), patch));
   /* A copy: the caller learns whether the save reached the disk, and the cached
    * settings — which are what gets written — never carry the report. */
   return Object.assign({}, result.settings, { ok: result.ok });
