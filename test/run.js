@@ -858,6 +858,31 @@ test('X11 falls back to a Wayland tool rather than giving up', () => {
   assert.strictEqual(systemIntegration.choosePasteTool(['wtype'], false).name, 'wtype');
 });
 
+/* macOS refuses a keystroke two different ways, and each refusal is turned back on in a
+ * different pane of System Settings. Reporting both as Accessibility is what produced a
+ * setting that was on, permission that was on, and a paste that never happened. The
+ * messages below are the ones osascript actually prints. */
+test('a refused keystroke names the permission it needs', () => {
+  const accessibility = systemIntegration.pasteFailureKey(
+    'execution error: Not allowed to send keystrokes. (-1002)\nSystem Events got an error: osascript is not allowed assistive access.'
+  );
+  assert.strictEqual(accessibility.errorKey, 'error.pastePermission');
+  assert.strictEqual(accessibility.needsAccessibility, true);
+  assert.strictEqual(accessibility.needsAutomation, undefined);
+
+  const automation = systemIntegration.pasteFailureKey(
+    'execution error: Not authorized to send Apple events to System Events. (-1743)'
+  );
+  assert.strictEqual(automation.errorKey, 'error.pasteAutomation');
+  assert.strictEqual(automation.needsAutomation, true);
+  assert.strictEqual(automation.needsAccessibility, undefined);
+
+  const other = systemIntegration.pasteFailureKey('execution error: something else went wrong (-1708)');
+  assert.strictEqual(other.errorKey, 'error.pasteFailed');
+  assert.strictEqual(other.needsAccessibility, undefined);
+  assert.strictEqual(other.needsAutomation, undefined);
+});
+
 test('no helper means no claim that it works', () => {
   assert.strictEqual(systemIntegration.choosePasteTool([], false), null);
   assert.strictEqual(systemIntegration.choosePasteTool([], true), null);
@@ -1257,6 +1282,45 @@ test('a truncated JSON answer is salvaged, never pasted raw', async () => {
   const fenced = await gemini.transcribe({ apiKey: 'k', model: 'fenced-model', wav: validWav(), settings: { attempts: 1 } });
   assert.strictEqual(fenced.ok, false);
   assert.strictEqual(fenced.errorKey, 'error.noSpeech', 'a fenced empty answer is still an empty answer');
+});
+
+/* What a silent recording got back, measured on this machine: the model announced the
+ * answer it was asked for instead of giving it, and the announcement was typed into
+ * whatever the user had open. The empty answer it was asked for is {"speech": false};
+ * anything that is a sentence *about* the request is that same verdict in prose. */
+test('a sentence about the request is not a transcript', async () => {
+  const asAnswer = (text) =>
+    stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text }] } }] } }));
+
+  const seen = [
+    'Here is the JSON requested:',
+    'Sure, here is the transcript:',
+    'بفرمایید:',
+    'As requested, the JSON output is below:',
+    '{"speech": false, "text": ""}'
+  ];
+  for (const text of seen) {
+    asAnswer(text);
+    const result = await gemini.transcribe({ apiKey: 'k', model: 'meta-model', wav: validWav(), settings: { attempts: 1 } });
+    assert.strictEqual(result.ok, false, JSON.stringify(text) + ' is not a transcript');
+    assert.strictEqual(result.errorKey, 'error.noSpeech', JSON.stringify(text) + ' means nothing was heard');
+  }
+
+  /* And the other half of the bargain: a sentence the user actually said is kept, even
+   * when it is short and mentions JSON, and even when it ends at a colon with words
+   * after it. Dropping a real transcript is the worse mistake. */
+  const kept = [
+    'send me the JSON file',
+    'I fixed the JSON parsing bug and now the client works fine.',
+    'Here is the plan: we ship on Friday and then we watch the numbers.',
+    'این هم متنی که نوشته بودم'
+  ];
+  for (const text of kept) {
+    asAnswer('{"speech": true, "text": ' + JSON.stringify(text) + '}');
+    const result = await gemini.transcribe({ apiKey: 'k', model: 'meta-model', wav: validWav(), settings: { attempts: 1 } });
+    assert.strictEqual(result.ok, true, JSON.stringify(text) + ' was said out loud');
+    assert.strictEqual(result.text, text);
+  }
 });
 
 test('an answer the thinking ate is asked again with more room', async () => {
@@ -1774,6 +1838,21 @@ test('Escape is held while the app is busy and never before', () => {
   assert.ok(shortcutHandlers.has('Escape'), 'and it stays ours while the answer is coming');
   setPhase('idle');
   assert.ok(!shortcutHandlers.has('Escape'), 'at rest it belongs to whatever app the user is in');
+
+  /* A key another app already holds fails without throwing, and a failure has to be
+   * remembered as one: recorded as captured, Escape would never be asked for again and
+   * the way out of a recording would be gone for the rest of the session. */
+  const foreign = () => {};
+  shortcutHandlers.set('Escape', foreign);
+  setPhase('recording');
+  assert.strictEqual(shortcutHandlers.get('Escape'), foreign, 'the other app keeps its key');
+
+  shortcutHandlers.delete('Escape'); // that app closed
+  setPhase('idle');
+  setPhase('recording');
+  assert.ok(shortcutHandlers.has('Escape'), 'the next recording asks for it again');
+  assert.notStrictEqual(shortcutHandlers.get('Escape'), foreign, 'and now it is ours');
+  setPhase('idle');
 });
 
 test('a recording with no speech is never sent to the model', async () => {
