@@ -263,6 +263,30 @@
     return { samples: samples, trimmedMs: Math.round((samples.length / rate) * 1000) };
   }
 
+  /* --------------------------------------------------------------- gain --- */
+
+  /* Gain a quiet WAV (16-bit PCM, 44-byte header) up to a target peak; returns the SAME
+   * object when no useful gain exists. Used when the model says it heard no speech but
+   * the app measured some: asking again with the identical audio at temperature 0 would
+   * produce the identical answer, so the second attempt is the same recording, louder. */
+  function normalizeWavPeak(wav, target, maxGain) {
+    var tgt = (target || 0.89) * 32767, cap = maxGain || 8;
+    var n = (wav.byteLength - 44) >> 1;
+    var view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+    var peak = 0, i;
+    for (i = 0; i < n; i++) { var s = Math.abs(view.getInt16(44 + i * 2, true)); if (s > peak) peak = s; }
+    if (peak < 1) return wav;
+    var gain = Math.min(cap, tgt / peak);
+    if (gain <= 1.2) return wav;
+    var out = new Uint8Array(wav.byteLength); out.set(wav);
+    var ov = new DataView(out.buffer);
+    for (i = 0; i < n; i++) {
+      var v = Math.round(view.getInt16(44 + i * 2, true) * gain);
+      ov.setInt16(44 + i * 2, Math.max(-32768, Math.min(32767, v)), true);
+    }
+    return out;
+  }
+
   /* --------------------------------------------------------- voice gate --- */
 
   /* Is this the room, or is this someone talking?
@@ -350,6 +374,7 @@
     rms: rms,
     durationSeconds: durationSeconds,
     trimToSpeech: trimToSpeech,
+    normalizeWavPeak: normalizeWavPeak,
     createVoiceGate: createVoiceGate,
     createEndpointer: createEndpointer,
     bandEdges: bandEdges,

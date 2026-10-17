@@ -224,6 +224,7 @@ async function handleAudioResult(wav, durationMs, voiceMs, trimmedMs) {
     wav,
     settings,
     seconds: sent / 1000,
+    measuredSpeechMs: spoken,
     signal: controller.signal,
     onAttempt: (attempt, total) => {
       if (sessionId === mine) {

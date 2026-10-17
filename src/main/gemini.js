@@ -8,6 +8,7 @@
 
 const { t } = require('../shared/i18n');
 const { languageLine } = require('../shared/prompt');
+const { normalizeWavPeak } = require('../shared/audio');
 
 const API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
 const ATTEMPT_MIN_MS = 15000;
@@ -90,7 +91,10 @@ function statusVars(status) {
  * rather than folded into the user turn, because it is the model's role and not the
  * user's message. The spoken language of the recording is stated next to it. */
 function systemInstruction(settings) {
-  return [(settings.prompt || '').trim(), languageLine(settings.language)].filter(Boolean).join('\n\n');
+  /* The spoken language of this recording goes in the user turn, which needs a text
+   * part beside the audio anyway; saying it twice made the same sentence appear in both
+   * places of the request. */
+  return (settings.prompt || '').trim();
 }
 
 /* The user turn carries only what is specific to this recording. */
@@ -245,12 +249,18 @@ function readCandidate(json, uiLanguage) {
     if (feedback && feedback.blockReason) {
       return { ok: false, errorKey: 'error.blocked', error: t(uiLanguage, 'error.blocked') };
     }
-    return { ok: false, errorKey: 'error.emptyReply', error: t(uiLanguage, 'error.emptyReply') };
+    /* No answer at all is not a verdict about the audio: ask again. */
+    return { ok: false, errorKey: 'error.emptyReply', error: t(uiLanguage, 'error.emptyReply'), retryable: true };
   }
 
   const raw = ((candidate.content && candidate.content.parts) || []).map((p) => (p.thought ? '' : p.text || '')).join('');
   const answer = readTranscript(raw);
   const capped = candidate.finishReason === 'MAX_TOKENS';
+  /* An empty response with a normal ending is the provider having nothing to say, not
+   * the model deciding there was no speech — only {"speech":false} is that. */
+  if (!raw.trim() && !capped && candidate.finishReason !== 'SAFETY') {
+    return { ok: false, errorKey: 'error.emptyReply', error: t(uiLanguage, 'error.emptyReply'), retryable: true };
+  }
   if (answer.unreadable || (!raw.trim() && capped)) {
     /* Nothing usable and the model ran out of room (thinking tokens count against the cap):
      * that is a reason to ask again with more room, not a verdict about the audio. */
@@ -382,7 +392,7 @@ function buildBody({ model, settings, seconds, audio, refused, tokenBoost }) {
   };
 }
 
-async function transcribe({ apiKey, model, wav, settings, seconds, onAttempt, signal }) {
+async function transcribe({ apiKey, model, wav, settings, seconds, measuredSpeechMs, onAttempt, signal }) {
   const uiLanguage = settings.uiLanguage;
   if (!apiKey) return { ok: false, errorKey: 'error.noKey', error: t(uiLanguage, 'error.noKey') };
   if (!model) return { ok: false, errorKey: 'error.noModel', error: t(uiLanguage, 'error.noModel') };
@@ -390,7 +400,8 @@ async function transcribe({ apiKey, model, wav, settings, seconds, onAttempt, si
   const cancelled = () => ({ ok: false, cancelled: true, errorKey: 'error.cancelled' });
   const url = `${API_ROOT}/models/${encodeURIComponent(model)}:generateContent`;
   const attempts = Math.max(1, Math.min(5, Number(settings.attempts) || 3));
-  const audio = Buffer.from(wav).toString('base64'); // once, not once per attempt
+  let audio = Buffer.from(wav).toString('base64'); // once, not once per attempt
+  let boosted = false; // the loud retry happens at most once per transcription
   const refused = refusals.get(model) || new Set();
   refusals.set(model, refused);
 
@@ -447,6 +458,23 @@ async function transcribe({ apiKey, model, wav, settings, seconds, onAttempt, si
       if (parsed.needsMoreTokens && attempt < attempts) {
         tokenBoost = Math.min(4, tokenBoost * 2);
         if (onAttempt) onAttempt(attempt + 1, attempts);
+        continue;
+      }
+      /* 5b: the app measured real speech and the model says there was none. Asking the
+       * same quiet audio again at temperature 0 changes nothing, so the second attempt
+       * is the same recording made louder. */
+      if (parsed.errorKey === 'error.noSpeech' && !boosted && measuredSpeechMs >= 1000 && attempt < attempts) {
+        const louder = normalizeWavPeak(wav);
+        if (louder !== wav) {
+          boosted = true;
+          audio = Buffer.from(louder).toString('base64');
+          if (onAttempt) onAttempt(attempt + 1, attempts);
+          continue;
+        }
+      }
+      if (parsed.retryable && attempt < attempts) {
+        if (onAttempt) onAttempt(attempt + 1, attempts);
+        if (await sleep(backoffMs(attempt), signal)) return cancelled();
         continue;
       }
       return parsed;

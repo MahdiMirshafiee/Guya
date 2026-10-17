@@ -958,8 +958,8 @@ test('the system prompt is a real system instruction', async () => {
   stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [{ text: 'ok' }] } }] } }));
   await gemini.transcribe({ apiKey: 'k', model: 'gemini-2.5-flash', wav: validWav(), seconds: 12, settings: { language: 'fa', prompt: GuyaPrompt.DEFAULT_PROMPT } });
   const body = JSON.parse(lastRequest.options.body);
-  assert.ok(body.systemInstruction.parts[0].text.startsWith(GuyaPrompt.DEFAULT_PROMPT), 'the job description is in systemInstruction');
-  assert.ok(body.systemInstruction.parts[0].text.includes('The audio is in Persian.'), 'and it knows the spoken language');
+  assert.strictEqual(body.systemInstruction.parts[0].text.trim(), GuyaPrompt.DEFAULT_PROMPT.trim(), 'the job description is the system instruction, and nothing else');
+  assert.ok(body.contents[0].parts[0].text.includes('The audio is in Persian.'), 'the spoken language is stated once, in the user turn');
   /* The user turn describes this one recording; the rules live in the system
    * instruction, so this turn stays a sentence or two. */
   assert.ok(body.contents[0].parts[0].text.length < 220, 'the user turn stays short');
@@ -1033,8 +1033,8 @@ test('missing candidates and safety blocks become errors', async () => {
   assert.strictEqual(blocked.ok, false);
 
   stubFetch(() => ({ status: 200, body: { candidates: [{ content: { parts: [] }, finishReason: 'STOP' }] } }));
-  const empty = await gemini.transcribe({ apiKey: 'k', model: 'm', wav: validWav(), settings: {} });
-  assert.strictEqual(empty.errorKey, 'error.noSpeech');
+  const empty = await gemini.transcribe({ apiKey: 'k', model: 'm', wav: validWav(), settings: { attempts: 1 } });
+  assert.strictEqual(empty.errorKey, 'error.emptyReply', 'an empty response is the provider having nothing to say, not a verdict about the audio');
 });
 
 test('transcribe refuses to run without a key or model', async () => {
@@ -1140,7 +1140,7 @@ function loadGeminiWithShortTimeouts(minMs, maxMs) {
     .replace('const ATTEMPT_MAX_MS = 60000;', `const ATTEMPT_MAX_MS = ${maxMs};`);
   assert.notStrictEqual(patched, source, 'the timeout constants are where this expects them');
   fs.writeFileSync(path.join(root, 'src', 'main', 'gemini.js'), patched);
-  ['i18n.js', 'prompt.js'].forEach((name) => {
+  ['i18n.js', 'prompt.js', 'audio.js'].forEach((name) => {
     fs.copyFileSync(path.join(__dirname, '..', 'src', 'shared', name), path.join(root, 'src', 'shared', name));
   });
   return require(path.join(root, 'src', 'main', 'gemini.js'));
@@ -1280,6 +1280,58 @@ test('a server that comes back after two failures is believed', async () => {
   });
   assert.strictEqual(result.text, 'third time');
   assert.deepStrictEqual(seen, ['2/3', '3/3'], 'the screen can say which attempt is running');
+});
+
+test('an empty answer is asked for again, and only the model can say there was no speech', async () => {
+  let calls = 0;
+  stubFetch(() => {
+    calls++;
+    if (calls === 1) return { status: 200, body: { candidates: [{ content: { parts: [] }, finishReason: 'STOP' }] } };
+    return { status: 200, body: { candidates: [{ content: { parts: [{ text: '{"speech":true,"text":"second time"}' }] } }] } };
+  });
+  const recovered = await gemini.transcribe({ apiKey: 'k', model: 'empty-model', wav: validWav(), settings: { attempts: 2 } });
+  assert.strictEqual(recovered.ok, true, 'an empty response is a reason to ask again');
+  assert.strictEqual(recovered.text, 'second time');
+  assert.strictEqual(calls, 2);
+
+  /* An empty answer every time is reported as one, not as the model's verdict. */
+  let still = 0;
+  stubFetch(() => {
+    still++;
+    return { status: 200, body: { candidates: [{ content: { parts: [] }, finishReason: 'STOP' }] } };
+  });
+  const empty = await gemini.transcribe({ apiKey: 'k', model: 'empty-model', wav: validWav(), settings: { attempts: 2 } });
+  assert.strictEqual(empty.ok, false);
+  assert.strictEqual(empty.errorKey, 'error.emptyReply', 'not error.noSpeech: nothing was decided about the audio');
+  assert.strictEqual(still, 2, 'and it was tried the number of times asked for');
+});
+
+test('a model that says there was no speech gets the same audio, louder, once', () => {
+  /* Retrying identical audio at temperature 0 produces an identical answer, so the
+   * second attempt is the same recording with its peak brought up. */
+  const quietSamples = new Float32Array(1600);
+  for (let i = 0; i < quietSamples.length; i++) quietSamples[i] = 0.02 * Math.sin((2 * Math.PI * 440 * i) / 16000);
+  const quiet = GuyaAudio.wavFromFloat32(quietSamples, 16000);
+  const louder = GuyaAudio.normalizeWavPeak(quiet);
+  assert.notStrictEqual(louder, quiet, 'a quiet recording is made louder');
+  assert.strictEqual(louder.length, quiet.length, 'the same number of samples');
+
+  const view = (wav) => {
+    const data = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+    let peak = 0;
+    for (let i = 0; i < (wav.byteLength - 44) >> 1; i++) peak = Math.max(peak, Math.abs(data.getInt16(44 + i * 2, true)));
+    return peak;
+  };
+  assert.ok(view(louder) > view(quiet) * 4, 'by a useful amount: ' + view(quiet) + ' -> ' + view(louder));
+  assert.ok(view(louder) <= 32767, 'and without clipping: ' + view(louder));
+  assert.deepStrictEqual(Array.from(louder.slice(0, 44)), Array.from(quiet.slice(0, 44)), 'the header is untouched');
+
+  const loudSamples = new Float32Array(1600);
+  for (let i = 0; i < loudSamples.length; i++) loudSamples[i] = 0.95 * Math.sin((2 * Math.PI * 440 * i) / 16000);
+  const loud = GuyaAudio.wavFromFloat32(loudSamples, 16000);
+  assert.strictEqual(GuyaAudio.normalizeWavPeak(loud), loud, 'a loud recording is returned as it is, same object');
+  const silent = GuyaAudio.wavFromFloat32(new Float32Array(1600), 16000);
+  assert.strictEqual(GuyaAudio.normalizeWavPeak(silent), silent, 'and silence has nothing to gain');
 });
 
 test('a request that says nothing useful is final', async () => {
@@ -1571,19 +1623,22 @@ test('the field is seeded, once, from whatever an install already had', () => {
 
 test('what the field holds is what the model is told', () => {
   const edited = gemini.systemInstruction({ language: 'en', prompt: 'Only ever answer with the transcript.' });
-  assert.ok(edited.startsWith('Only ever answer with the transcript.'), 'an edited prompt replaces the default');
+  assert.strictEqual(edited, 'Only ever answer with the transcript.', 'the field is the system instruction, exactly');
   assert.ok(edited.indexOf('You are a transcription engine') === -1, 'and the default does not linger behind it');
-  assert.ok(/^The audio is in English\./.test(edited.split('\n\n').pop()), 'the recording is still described after it');
+  /* The spoken language of this recording is said once, in the user turn beside the
+   * audio, rather than in both places. */
+  assert.ok(/^The audio is in English\./.test(gemini.buildInstruction({ language: 'en' })), 'the recording is described in the user turn');
 
   /* The user turn describes this one recording and nothing else. */
   const turn = gemini.buildInstruction({ language: 'fa', prompt: 'Only ever answer with the transcript.' });
   assert.strictEqual(turn, 'The audio is in Persian. Transcribe it as spoken, and if part of it is in another language, keep that part in that language.');
   assert.ok(/keep that part in that language/.test(turn), 'naming a language still allows code-switching');
 
-  /* An emptied field means no rules, not a silent fallback: the window says what
-   * the app does. Only the language line is left. */
-  const cleared = gemini.systemInstruction({ language: 'auto', prompt: '   ' });
-  assert.strictEqual(cleared, 'The audio may be in any language: transcribe every part in the language it is spoken in.');
+  /* An emptied field means no rules, not a silent fallback: the window says what the
+   * app does. The user turn still describes the recording, which is a fact about it
+   * rather than an instruction. */
+  assert.strictEqual(gemini.systemInstruction({ language: 'auto', prompt: '   ' }), '');
+  assert.ok(/^The audio may be in any language/.test(gemini.buildInstruction({ language: 'auto' })), 'the recording is still described');
 
   /* English and Persian windows send the very same words to the model. */
   const faWindow = gemini.systemInstruction({ uiLanguage: 'fa', language: 'fa', prompt: GuyaPrompt.DEFAULT_PROMPT });
