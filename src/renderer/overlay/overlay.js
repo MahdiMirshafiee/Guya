@@ -33,7 +33,10 @@ const CLOUD_HZ = [
   [2400, 7200]
 ];
 
-const PALETTE_FOR = { starting: 'live', listening: 'live', processing: 'busy', done: 'done', error: 'failed' };
+/* Blue is the app's "working" state, and opening the microphone is work: the user
+ * must not start talking into a microphone that is not live yet. The warm palette is
+ * reserved for the moment it actually is. */
+const PALETTE_FOR = { starting: 'busy', listening: 'live', processing: 'busy', done: 'done', error: 'failed' };
 
 let stream = null;
 let audioCtx = null;
@@ -131,9 +134,11 @@ function setState(name, text) {
     orb.stop();
     return;
   }
-  orb.setDriven(name === 'listening' || name === 'starting');
+  orb.setDriven(name === 'listening');
   orb.setProcessing(name === 'processing');
-  orb.setPalette(PALETTE_FOR[name] || 'live');
+  /* The switch to warm at the instant the microphone goes live is the signal the user
+   * waits for, so it is quick; everything else blends slowly. */
+  orb.setPalette(PALETTE_FOR[name] || 'live', name === 'listening' ? 120 : 600);
   orb.start();
 }
 
@@ -178,8 +183,15 @@ function micErrorKey(err) {
 
 async function openMic(token) {
   /* Everything that does not need the device is built at boot, so the only thing
-   * between the user's keypress and a live microphone is the device itself. */
+   * between the user's keypress and a live microphone is the device itself. The
+   * graph is resumed beside the device request rather than after it: the context is
+   * suspended when nothing is recording, and resuming it is a second wait the user
+   * would pay on top of the device opening. */
   const prepared = prepareGraph();
+  cancelIdleSuspend();
+  const resumed = prepared
+    .then(() => (audioCtx && audioCtx.state === 'suspended' ? audioCtx.resume() : null))
+    .catch(() => {});
 
   let opened;
   try {
@@ -198,17 +210,19 @@ async function openMic(token) {
 
   try {
     await prepared;
+    await resumed;
     if (token !== sessionToken) {
       releaseMic();
       return false;
     }
+    if (!audioCtx || !captureNode || !analyser) throw new Error('audio graph unavailable');
+    if (audioCtx.state === 'suspended') await audioCtx.resume();
     sourceNode = audioCtx.createMediaStreamSource(stream);
     /* The worklet outlives the recording, and a partial chunk in it would be
      * prepended to this one. */
     if (captureNode.port) captureNode.port.postMessage('reset');
     sourceNode.connect(captureNode);
     sourceNode.connect(analyser);
-    if (audioCtx.state === 'suspended') await audioCtx.resume();
     captureRate = audioCtx.sampleRate;
     /* A device that goes away mid-recording (unplugged, taken by another app) must
      * end the recording rather than record silence for five minutes. */
@@ -321,7 +335,10 @@ function prepareGraph() {
   return graphReady;
 }
 
-/* Closes the microphone and leaves the graph ready for the next time. */
+/* Closes the microphone straight away. The graph itself is left running for a while:
+ * suspending it costs a resume on the next recording, and a context with no source
+ * connected costs nothing worth measuring. It is suspended later, on a timer — which
+ * is also what keeps the context alive while a recording is being transcribed. */
 function releaseMic() {
   try {
     if (sourceNode) sourceNode.disconnect();
@@ -331,9 +348,21 @@ function releaseMic() {
   }
   sourceNode = null;
   stream = null;
-  /* Nothing is being recorded: holding the output device open keeps the CPU awake
-   * for nothing. The graph is rebuilt by prepareGraph() when it is needed again. */
-  if (audioCtx && audioCtx.state === 'running') audioCtx.suspend().catch(() => {});
+  scheduleIdleSuspend();
+}
+
+let idleTimer = null;
+
+function scheduleIdleSuspend() {
+  cancelIdleSuspend();
+  idleTimer = setTimeout(() => {
+    if (!capturing && !starting && audioCtx && audioCtx.state === 'running') audioCtx.suspend().catch(() => {});
+  }, 30000);
+}
+
+function cancelIdleSuspend() {
+  if (idleTimer) clearTimeout(idleTimer);
+  idleTimer = null;
 }
 
 async function reportFailure(err) {

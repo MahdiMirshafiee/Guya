@@ -58,6 +58,7 @@
     let dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     let handle = 0;
     let lastFrame = 0;
+    let blendMs = 600; // how long a palette change takes; the caller may shorten it
 
     function resize() {
       const width = canvas.clientWidth || box;
@@ -78,9 +79,11 @@
       const size = canvas.width / dpr;
       const half = size / 2;
 
-      /* Palette changes blend instead of snapping: a hard cut reads as a glitch. */
+      /* Palette changes blend instead of snapping: a hard cut reads as a glitch. How
+       * long the blend takes is the caller's: the switch to the live colour at the
+       * instant the microphone opens has to be quick enough to be a signal. */
       const target = PALETTES[paletteName];
-      const step = reduced ? 1 : Math.min(1, Math.max(0, now - lastFrame) / 600 || 1);
+      const step = reduced ? 1 : Math.min(1, Math.max(0, now - lastFrame) / blendMs || 1);
       lastFrame = now;
       for (let i = 0; i < palette.length; i++) {
         for (let c = 0; c < 3; c++) palette[i][c] += (target[i][c] - palette[i][c]) * step;
@@ -203,8 +206,10 @@
     return {
       resize: resize,
       draw: draw,
-      setPalette(name) {
+      /* `ms` is how long the blend to this palette takes. */
+      setPalette(name, ms) {
         if (PALETTES[name]) paletteName = name;
+        if (typeof ms === 'number' && ms > 0) blendMs = ms;
       },
           setLevel(v) { level = Math.max(0, Math.min(1, v)); },
       setLevels(next) {

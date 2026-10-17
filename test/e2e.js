@@ -241,18 +241,54 @@ class Cdp {
   await panel.send('Page.bringToFront');
   await sleep(400);
   await panel.eval(`document.getElementById('record').click()`);
+
+  /* While the device is opening, the orb must not look like it is listening. What is
+   * checked is the drawing itself — the mean colour of the orb's canvas — because that
+   * is what the user reads: the cool palette is the app's "working" colour and the warm
+   * one means the microphone is really live. The state lasts as long as the device
+   * takes to open, so both are sampled as they happen. */
+  const orbTone = () => overlay.eval(`(() => {
+    const canvas = document.getElementById('orb-canvas');
+    const ctx = canvas.getContext('2d');
+    const size = 16;
+    const data = ctx.getImageData(Math.round(canvas.width / 2) - size / 2, Math.round(canvas.height / 2) - size / 2, size, size).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < data.length; i += 4) { r += data[i]; g += data[i + 1]; b += data[i + 2]; }
+    const n = data.length / 4;
+    return { r: Math.round(r / n), g: Math.round(g / n), b: Math.round(b / n), state: document.getElementById('stage').dataset.state };
+  })()`);
+
+  const startingTone = await waitFor(async () => {
+    const tone = await orbTone();
+    return tone.state === 'starting' && tone.r + tone.g + tone.b > 40 ? tone : null;
+  }, 3000, 'the orb to draw while the device opens').catch(() => null);
+  if (startingTone) {
+    check('while the device opens the orb is cool, not live', startingTone.b > startingTone.r, JSON.stringify(startingTone));
+  } else {
+    console.log('  (the device opened too fast to catch the starting state)');
+  }
+
   const live = await waitFor(async () => {
     const p = await phase();
     return p === 'recording' ? p : null;
   }, 12000, 'the recording phase');
   check('the microphone goes live', live === 'recording', live);
+
+  const liveTone = await waitFor(async () => {
+    const tone = await orbTone();
+    return tone.r > tone.b ? tone : null;
+  }, 3000, 'the orb to turn warm').catch(() => null);
+  check('and the orb turns warm when it really is live', !!liveTone, JSON.stringify(liveTone));
+
   await sleep(2200);
   check('status says it is listening', /شنیدن/.test(await el('status')), await el('status'));
   check('timer is counting', (await el('timer')) !== '0:00', await el('timer'));
+  /* Ten seconds, not six: the first launch after an install is unpacking the app and
+   * booting two renderers, and this check is "the meter is fed", not "within six". */
   const peak = await waitFor(async () => {
     const bars = await waveBars();
     return Math.max.apply(null, bars) > 20 ? Math.max.apply(null, bars) : 0;
-  }, 6000, 'the meter');
+  }, 10000, 'the meter');
   check('meter is fed by the microphone', peak > 20, peak);
 
   /* A meter made of one loudness number would light every bar by the same amount.
@@ -264,7 +300,7 @@ class Cdp {
     const low = Math.max.apply(null, bars.slice(0, third));
     const high = Math.max.apply(null, bars.slice(2 * third));
     return low > 20 ? { low, high } : null;
-  }, 6000, 'a spectrum');
+  }, 10000, 'a spectrum');
   check('the bars are frequency bands, not one loudness number', profile.low > profile.high * 2,
     JSON.stringify(profile));
   check('the button is stained while live', await panel.eval(`(() => {
