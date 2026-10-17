@@ -39,9 +39,16 @@ echo "==> icons"
 npm run icons
 
 echo "==> version $VERSION"
-npm version "$VERSION" --no-git-tag-version
+CURRENT="$(node -p "require('./package.json').version")"
+if [ "$CURRENT" != "$VERSION" ]; then
+  npm version "$VERSION" --no-git-tag-version
+else
+  # Releasing the version the tree already declares: the very first release, or a
+  # re-run after a tag was removed. `npm version` refuses to set a version to itself.
+  echo "    package.json is already $VERSION"
+fi
 
-git add package.json package-lock.json assets/icon.png build/icon.png
+git add package.json package-lock.json assets/icon.png build/icon.png build/icon-shape.png build/icons
 git commit -m "chore(release): v$VERSION"
 git tag "v$VERSION"
 
@@ -50,6 +57,6 @@ git push origin HEAD
 git push origin "v$VERSION"
 
 echo
-echo "v$VERSION is on its way. The Release workflow builds both platforms and"
-echo "publishes them here:"
+echo "v$VERSION is on its way. The Release workflow builds macOS, Windows and Linux,"
+echo "and publishes them here:"
 echo "  $(git remote get-url origin 2>/dev/null | sed 's#\.git$##' || echo '<remote>')/actions"
