@@ -79,12 +79,17 @@ jobs:
       # the Windows equivalent and electron-builder picks them up. Without them
       # the artifacts build unsigned, which is what a local build produces too.
       #
-      # Both architectures of each system, not just the one the runner happens to be:
-      # electron-builder cross-builds the other one, and every file carries its
-      # architecture in its name, so nothing collides and nobody downloads a build
-      # their machine cannot run. The combined installers this used to produce — one
-      # 207 MB file with both architectures inside — are gone with the names.
-      - run: npx electron-builder --${{ matrix.target }} --x64 --arm64 --publish never
+      # Both architectures of each system, not just the one the runner happens to be —
+      # but one invocation per architecture, which is not the same thing as one
+      # invocation with both flags: handed several architectures at once, NSIS packs
+      # them into a single installer (190 MB for a machine that can run half of it),
+      # while every other target quietly makes one file each. Two runs, four Windows
+      # files, and every name says which architecture it is.
+      - name: Package both architectures
+        shell: bash
+        run: |
+          npx electron-builder --${{ matrix.target }} --x64 --publish never
+          npx electron-builder --${{ matrix.target }} --arm64 --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: guya-${{ matrix.target }}
