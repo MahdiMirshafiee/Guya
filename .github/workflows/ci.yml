@@ -74,7 +74,11 @@ jobs:
       - run: npm ci
       - run: npm run icons
       # The deb metadata wants a project URL; CI is the only place that knows it.
-      - run: npm pkg set homepage="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+      # The shell is named because the default on Windows is PowerShell, where
+      # ${GITHUB_SERVER_URL} is a PowerShell variable and not the environment one —
+      # the value came out empty and npm refused it.
+      - shell: bash
+        run: npm pkg set homepage="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
       # Packaging is the slowest failure to discover, so it is checked on every
       # push rather than only when a release tag is cut. Each platform packages
       # best on its own system: a deb needs dpkg, an AppImage needs appimagetool.
