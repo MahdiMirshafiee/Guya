@@ -49,7 +49,13 @@ else
 fi
 
 git add package.json package-lock.json assets/icon.png build/icon.png build/icon-shape.png build/icons
-git commit -m "chore(release): v$VERSION"
+# Releasing the version a tree already carries changes nothing, and that is not a
+# failure: the tag is still the point.
+if git diff --cached --quiet; then
+  echo "    nothing changed to commit"
+else
+  git commit -m "chore(release): v$VERSION"
+fi
 git tag "v$VERSION"
 
 echo "==> pushing"
