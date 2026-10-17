@@ -310,7 +310,12 @@ class Cdp {
   })()`));
   /* Chromium keeps reporting the page as visible for a window that was never
    * shown, so the app's own decision is the signal to assert on. */
-  const decision = /\[guya\] overlay (\w+) \(window in front: (\w+)\)/.exec(appLog() || '');
+  /* The panel has to actually be in front for this to be the in-app case, and the log
+   * line to read is the one this recording produced — the last, not the first. */
+  const focused = await waitFor(async () => (await panel.eval('document.hasFocus()')) === true, 3000, 'the panel to take focus').catch(() => false);
+  check('the panel is in front, so this is the in-app case', focused === true);
+  const decisions = Array.from((appLog() || '').matchAll(/\[guya\] overlay (\w+) \(window in front: (\w+)\)/g));
+  const decision = decisions.length ? decisions[decisions.length - 1] : null;
   console.log('  overlay decision:', decision ? decision[0].replace('[guya] ', '') : 'not logged');
   check('the floating orb stays away while the window is in front', !!decision && decision[1] === 'suppressed', decision && decision[1]);
   check('Escape is grabbed while recording', /escape capture: on/.test(appLog()));
@@ -337,6 +342,30 @@ class Cdp {
   check('the status carries the provider answer', (await el('status')).length > 0, await el('status'));
   check('the loader goes away', await waitFor(async () => (await panel.eval(`document.getElementById('loader').hidden`)) === true, 3000, 'the loader to stop'));
   check('Escape grab released', /escape capture: off/.test(appLog()));
+
+  /* Once the overlay is hidden it must stop drawing. The renderer is deliberately not
+   * throttled — it owns the microphone — so nothing would stop its frame loop except
+   * being told to, and an app that keeps drawing a hidden orb burns a core for as long
+   * as it is open. A canvas that does not change between two samples is a canvas
+   * nothing is drawing. */
+  await waitFor(async () => (await overlay.eval(`document.getElementById('stage').dataset.state`)) === 'idle', 6000, 'the overlay to go idle');
+  /* The state is set before the loop is cancelled, so the first sample waits a moment
+   * for the last frame to land. */
+  await sleep(400);
+  const frozen = await overlay.eval(`(() => {
+    const canvas = document.getElementById('orb-canvas');
+    const ctx = canvas.getContext('2d');
+    const grab = () => Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data).join('');
+    window.__first = grab();
+    return window.__first.length;
+  })()`);
+  await sleep(1200);
+  const stillFrozen = await overlay.eval(`(() => {
+    const canvas = document.getElementById('orb-canvas');
+    const ctx = canvas.getContext('2d');
+    return Array.from(ctx.getImageData(0, 0, canvas.width, canvas.height).data).join('') === window.__first;
+  })()`);
+  check('and a hidden overlay stops drawing', stillFrozen === true, JSON.stringify({ sampled: frozen }));
 
   console.log('\n5. the transcript view');
   await panel.eval(`onState(Object.assign({}, appState, {phase:'done', lastTranscript:'یک یادداشت کوتاه برای آزمون.', lastDurationMs:10000}))`);
@@ -513,15 +542,18 @@ class Cdp {
   check('no unhandled rejections', !/UnhandledPromiseRejection/.test(appLog()));
 
   console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
-  process.exit(failures ? 1 : 0);
 })()
   .catch((err) => {
     console.error('e2e error:', err.message);
     failures++;
-    process.exit(1);
   })
   .finally(() => {
+    /* The app is killed here and only here. Exiting from the middle of the chain used to
+     * skip this, and an Electron instance that outlives the run keeps the single-instance
+     * lock — so the next `npm start` quits itself and the machine is left with a hidden
+     * app. */
     if (app) app.kill();
+    process.exitCode = failures ? 1 : 0;
     if (logStream) {
       try {
         fs.closeSync(logStream);

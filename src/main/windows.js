@@ -204,11 +204,13 @@ function showOverlay() {
 }
 
 function hideOverlay() {
-  if (!overlayWin || overlayWin.isDestroyed() || !overlayWin.isVisible()) return;
+  if (!overlayWin || overlayWin.isDestroyed()) return;
   /* The renderer keeps its animation frame running while hidden — the window is not
-   * throttled, so that it can capture — so it has to be told to stop drawing. */
+   * throttled, so that it can capture — so it has to be told to stop drawing. That is
+   * true whether or not the window was ever shown: with the panel in front the overlay
+   * is never displayed, and it would otherwise draw for the rest of the session. */
   sendToOverlay({ type: 'idle' });
-  overlayWin.hide();
+  if (overlayWin.isVisible()) overlayWin.hide();
 }
 
 /* True when the recorder window is on screen and in front: the window already
