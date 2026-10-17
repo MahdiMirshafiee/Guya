@@ -92,15 +92,17 @@ jobs:
     if: github.event_name == 'push' || github.event.inputs.tag != ''
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
+      # The checkout comes first: it cleans the workspace, so anything downloaded
+      # before it would be deleted — which is exactly what happened to the installers.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # the notes are written from the commits since the last tag
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
       - name: Write the release notes
         shell: bash
         run: node scripts/notes.js "${{ github.event.inputs.tag || github.ref_name }}" > notes.md
@@ -110,7 +112,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ github.event.inputs.tag || github.ref_name }}"
-          mapfile -t files < <(find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) | sort)
+          # A while-read loop rather than mapfile: mapfile does not exist in the bash
+          # that ships on macOS, which is the difference between a step that can be
+          # reproduced on a laptop and one that only runs on the runner.
+          files=()
+          while IFS= read -r file; do files+=("$file"); done < <(find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) | sort)
           printf 'attaching:\n%s\n' "${files[@]}"
           if [ "${#files[@]}" -eq 0 ]; then
             echo "::error::no installers were downloaded from the build jobs"
