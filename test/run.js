@@ -24,6 +24,7 @@ const fakeSafeStorage = {
   decryptString: (buffer) => buffer.toString('utf8').replace(/^enc:/, '')
 };
 
+const openedPanes = [];
 const fakeElectron = {
   safeStorage: fakeSafeStorage,
   app: {
@@ -35,7 +36,12 @@ const fakeElectron = {
   },
   clipboard: { writeText: (text) => clipboardWrites.push(text) },
   systemPreferences: { getMediaAccessStatus: () => 'granted', askForMediaAccess: async () => true },
-  shell: { openExternal: () => Promise.resolve() }
+  shell: {
+    openExternal: (target) => {
+      openedPanes.push(target);
+      return Promise.resolve();
+    }
+  }
 };
 
 /* The shortcut path is the one a user meets first, so it is driven here the way
@@ -891,6 +897,44 @@ test('a refused keystroke names the permission it needs', () => {
 test('no helper means no claim that it works', () => {
   assert.strictEqual(systemIntegration.choosePasteTool([], false), null);
   assert.strictEqual(systemIntegration.choosePasteTool([], true), null);
+});
+
+test('every system is sent to its own settings pane', async () => {
+  /* What the app does about a missing permission is open the pane that turns it back on,
+   * and each system puts that pane somewhere else. Getting it wrong sends the user to a
+   * screen that cannot help, which is what "paste automatically does nothing, although it
+   * is on" looked like from the outside. */
+  const systemPath = require.resolve('../src/main/system.js');
+  const on = async (platform, kind) => {
+    const realPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+    delete require.cache[systemPath];
+    try {
+      await require(systemPath).openPrivacySettings(kind);
+    } finally {
+      Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+      delete require.cache[systemPath];
+    }
+    return openedPanes[openedPanes.length - 1];
+  };
+
+  openedPanes.length = 0;
+  assert.ok(/Privacy_Accessibility$/.test(await on('darwin', 'accessibility')), 'macOS has a pane per permission');
+  assert.ok(/Privacy_Automation$/.test(await on('darwin', 'automation')), 'including the one that lets it type at all');
+  assert.ok(/Privacy_Microphone$/.test(await on('darwin', 'microphone')));
+  assert.strictEqual(
+    await on('darwin', 'nonsense'),
+    'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
+    'and an unknown one lands on the microphone rather than nowhere'
+  );
+
+  assert.strictEqual(await on('win32', 'accessibility'), 'ms-settings:easeofaccess-keyboard');
+  assert.strictEqual(await on('win32', 'microphone'), 'ms-settings:privacy-microphone');
+  assert.strictEqual(await on('win32', 'automation'), 'ms-settings:easeofaccess-keyboard', 'Windows has no Automation pane; the keyboard one is the nearest thing');
+
+  openedPanes.length = 0;
+  await on('linux', 'accessibility');
+  assert.strictEqual(openedPanes.length, 0, 'Linux has no such pane, and the app says nothing rather than guessing');
 });
 
 test('the settings the system will not honour are refused, not stored', async () => {

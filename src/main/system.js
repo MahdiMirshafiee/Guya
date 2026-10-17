@@ -210,9 +210,11 @@ function openPrivacySettings(kind) {
     return shell.openExternal(pane);
   }
   if (IS_WIN) {
-    const page = kind === 'accessibility' ? 'ms-settings:easeofaccess-keyboard' : 'ms-settings:privacy-microphone';
-    /* Windows has no Automation pane: the closest thing is the keyboard page, which is
-     * the same one Accessibility opens. */
+    /* Windows has no Automation pane and no Accessibility pane as macOS means it: the
+     * keyboard page under Ease of Access is the nearest thing, and the microphone has a
+     * page of its own. The line used to send everything but "accessibility" to the
+     * microphone page, which is not where a refused keystroke is fixed. */
+    const page = kind === 'microphone' ? 'ms-settings:privacy-microphone' : 'ms-settings:easeofaccess-keyboard';
     return shell.openExternal(page);
   }
   return Promise.resolve();
