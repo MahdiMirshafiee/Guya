@@ -103,8 +103,15 @@ jobs:
           tag="${{ github.event.inputs.tag || github.ref_name }}"
           mapfile -t files < <(find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) | sort)
           printf 'attaching:\n%s\n' "${files[@]}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" "${files[@]}" --clobber
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "::error::no installers were downloaded from the build jobs"
+            exit 1
+          fi
+          # --repo is not optional here: this job never checks the repository out, so
+          # there is no working tree for gh to read the remote from — and without it
+          # every release failed with "not a git repository".
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$tag" "${files[@]}" --title "Guya $tag" --generate-notes
+            gh release create "$tag" "${files[@]}" --repo "$GITHUB_REPOSITORY" --title "Guya $tag" --generate-notes
           fi
