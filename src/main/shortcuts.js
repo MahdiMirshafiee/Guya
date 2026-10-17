@@ -21,13 +21,22 @@ let escapeRegistered = false;
  * the previous one held forever. */
 let active = '';
 
+/* Puts the previous key back after a change that did not work out, and says whether it
+ * worked: another app can have taken that combination in the meantime, and then the app
+ * has no shortcut at all — which the window has to hear about rather than showing a key
+ * that is not held. */
 function restore(previous) {
-  if (!previous) return;
+  if (!previous) return true;
   try {
-    if (globalShortcut.register(previous, recorder.onHotkey)) active = previous;
-  } catch (_) {
-    /* nothing more can be done */
+    if (globalShortcut.register(previous, recorder.onHotkey)) {
+      active = previous;
+      return true;
+    }
+    console.warn('[guya] the previous shortcut could not be put back:', previous);
+  } catch (err) {
+    console.warn('[guya] the previous shortcut could not be put back:', err && err.message);
   }
+  return false;
 }
 
 function registerShortcut(next) {
@@ -43,14 +52,12 @@ function registerShortcut(next) {
   if (!next) return { ok: true };
   try {
     if (!globalShortcut.register(next, recorder.onHotkey)) {
-      restore(previous);
-      return { ok: false, errorKey: 'error.shortcutTaken' };
+      return { ok: false, errorKey: 'error.shortcutTaken', restored: restore(previous) };
     }
     active = next;
     return { ok: true };
   } catch (_) {
-    restore(previous);
-    return { ok: false, errorKey: 'error.shortcutInvalid' };
+    return { ok: false, errorKey: 'error.shortcutInvalid', restored: restore(previous) };
   }
 }
 

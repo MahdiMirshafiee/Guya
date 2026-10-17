@@ -173,6 +173,12 @@ function statusCopy() {
   if (appState.phase === 'error') {
     return { text: appState.lastErrorKey ? t(appState.lastErrorKey, appState.lastErrorVars) : t('error.unexpected'), kind: 'error' };
   }
+  /* The transcript is safe — it is in the clipboard — but the keystroke that was meant
+   * to type it into the app the user is in did not happen, and the window is where they
+   * look for the reason. */
+  if (appState.phase === 'done' && appState.lastErrorKey) {
+    return { text: t(appState.lastErrorKey, appState.lastErrorVars), kind: 'error' };
+  }
   if (appState.phase === 'starting') return { text: t('status.starting'), kind: '' };
   if (appState.phase === 'recording') return { text: t('status.listening'), kind: '' };
   if (appState.phase === 'transcribing') {

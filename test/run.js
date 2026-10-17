@@ -41,9 +41,14 @@ const fakeElectron = {
 /* The shortcut path is the one a user meets first, so it is driven here the way
  * the system drives it: through the callback that was handed to globalShortcut. */
 const shortcutHandlers = new Map();
+/* Combinations another application owns. The map above can only express "this app already
+ * registered it", which is not the same thing: the app unregisters its own key before it
+ * asks for a different one, so a key somebody else holds has to be expressible on its
+ * own to be testable at all. */
+const foreignShortcuts = new Set();
 fakeElectron.globalShortcut = {
   register: (accelerator, handler) => {
-    if (shortcutHandlers.has(accelerator)) return false;
+    if (shortcutHandlers.has(accelerator) || foreignShortcuts.has(accelerator)) return false;
     shortcutHandlers.set(accelerator, handler);
     return true;
   },
@@ -2016,9 +2021,23 @@ test('changing the shortcut releases the old one', async () => {
   const taken = shortcuts.applyShortcut('CommandOrControl+Shift+Space');
   assert.strictEqual(taken.ok, false);
   assert.strictEqual(taken.errorKey, 'error.shortcutTaken');
+  assert.strictEqual(taken.restored, true, 'the previous key went back');
   assert.deepStrictEqual(held(), ['CommandOrControl+Shift+Space', 'Control+Shift+D'], 'and the previous one is restored');
   assert.strictEqual(require('../src/main/state').state.shortcutErrorKey, 'error.shortcutTaken', 'the window can say so');
 
+  /* The previous key can be gone by the time it is asked for — another app took it while
+   * the user was typing a new one. Then the app holds nothing, and the settings file says
+   * nothing: showing a combination the app is not listening for is the one outcome the
+   * window must never have. */
+  foreignShortcuts.add('Control+Shift+D'); // another app took the key the app was holding
+  foreignShortcuts.add('Control+Shift+E'); // and the one being asked for
+  const orphaned = shortcuts.registerShortcut('Control+Shift+E');
+  assert.strictEqual(orphaned.ok, false);
+  assert.strictEqual(orphaned.restored, false, 'nothing could be put back');
+  assert.strictEqual(store.update({ shortcut: '' }).shortcut, '', 'so the honest setting is none at all');
+  assert.strictEqual(store.update({ shortcut: 'CommandOrControl+Shift+Space' }).shortcut, 'CommandOrControl+Shift+Space', 'and a shortcut can be set again');
+
+  foreignShortcuts.clear();
   shortcutHandlers.clear();
 });
 

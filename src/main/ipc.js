@@ -54,9 +54,12 @@ function register() {
     if (typeof clean.shortcut === 'string' && clean.shortcut !== before.shortcut) {
       const applied = shortcutApi.applyShortcut(next.shortcut);
       if (!applied.ok) {
-        // Keep the previously working shortcut active and stored.
         warningKey = applied.errorKey;
-        next = store.update({ shortcut: before.shortcut });
+        /* What the settings file holds is what the system is actually holding. When the
+         * previous key could be put back, that is the previous key; when it could not —
+         * because something else took it in the meantime — the honest value is none at
+         * all, rather than a combination the app is not listening for. */
+        next = store.update({ shortcut: applied.restored ? before.shortcut : '' });
       }
     }
 

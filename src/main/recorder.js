@@ -28,6 +28,7 @@ let startTimer = null; // the microphone never confirmed
 let maxTimer = null; // a recording that ran too long
 let watchdog = null; // a transcription that never answered
 let hideTimer = null; // the overlay saying goodbye
+let pasteTimer = null; // the wait before the transcript is typed into another app
 let sessionId = 0; // bumped by every beginRecording(); a result belongs to exactly one session
 let transcription = null; // { controller } while a request is in flight
 let lastKeyAt = 0;
@@ -68,9 +69,11 @@ function clearTimers() {
   clearTimeout(startTimer);
   clearTimeout(maxTimer);
   clearTimeout(watchdog);
+  clearTimeout(pasteTimer);
   startTimer = null;
   maxTimer = null;
   watchdog = null;
+  pasteTimer = null;
 }
 
 /* The overlay shows the result for a moment, then goes away on its own. */
@@ -171,6 +174,10 @@ function beginRecording() {
 function stopRecording() {
   if (state.phase !== 'recording' && state.phase !== 'starting') return;
   clearTimers();
+  /* The length of the recording that just ended, not the one before it: the window shows
+   * this number while the answer is coming, and it was the previous recording's — or zero
+   * on the first one — until the transcript arrived with the real figure. */
+  if (state.startedAt) state.lastDurationMs = Math.max(0, Date.now() - state.startedAt);
   setPhase('transcribing');
   pushPanel();
   windows.sendToOverlay({ type: 'stop' });
@@ -265,16 +272,28 @@ async function handleAudioResult(wav, durationMs, voiceMs, trimmedMs) {
   scheduleHide(1100);
 
   if (settings.pasteAfterTranscribe) {
-    // Give the overlay a moment to disappear before typing into the focused app.
-    setTimeout(async () => {
+    /* Give the overlay a moment to disappear before typing into the focused app — and
+     * keep the wait in the session's bookkeeping: a timer that outlived a cancel typed a
+     * cancelled transcript into whatever the user had opened by then. */
+    pasteTimer = setTimeout(async () => {
+      pasteTimer = null;
+      const mine = sessionId;
       /* Never into ourselves. With the window in front the transcript is already on
-       * screen, and a keystroke aimed at the recorder lands in a field nobody meant
-       * to write in — a paste that looks like it never happened. */
+       * screen, and a keystroke aimed at the recorder lands in a field nobody meant to
+       * write in — a paste that looks like it never happened. */
       if (windows.panelHasFocus()) return;
       const paste = await systemIntegration.pasteIntoActiveApp();
+      if (sessionId !== mine) return; // the user has moved on; this is nobody's any more
       if (!paste.ok) {
+        /* A paste that did not happen is a thing the user has to be told, and saying it
+         * only in the panel's error slot (which the window renders in the error phase)
+         * left the most common failure — a helper that is installed but not running, a
+         * keystroke the system refused for a reason of its own — completely silent. The
+         * orb is still on screen at this point and can say it. */
         state.lastErrorKey = paste.errorKey;
         state.lastErrorVars = null;
+        windows.sendToOverlay({ type: 'flash', state: 'error', messageKey: paste.errorKey, language: settings.uiLanguage });
+        scheduleHide(3200);
         pushPanel();
         /* macOS can refuse the keystroke in two ways, and each one is turned back on
          * in a different pane; offer the one that applies. */
@@ -306,6 +325,7 @@ function stopFromOverlay(reason) {
   if (reason && process.env.GUYA_DEBUG) console.log(`[guya] the overlay stopped the recording: ${reason}`);
   if (state.phase !== 'recording' && state.phase !== 'starting') return { ok: false };
   clearTimers();
+  if (state.startedAt) state.lastDurationMs = Math.max(0, Date.now() - state.startedAt);
   setPhase('transcribing');
   pushPanel();
   gemini.warm();

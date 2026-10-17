@@ -52,7 +52,12 @@ function sanitize(raw, fallback) {
   /* The accelerator the recorder produces can contain punctuation (`,` `.` `/` `;`
    * `'` `[` `]` `\` `-` `=` and the backtick); a pattern that rejected them made those
    * shortcuts work in the form and vanish in the file. */
-  if (typeof raw.shortcut === 'string' && /^[A-Za-z0-9+,\./;'[\]\\\-=`]+$/.test(raw.shortcut)) out.shortcut = raw.shortcut;
+  /* An empty string is a real answer — "no shortcut is held now" — which is what the file
+   * holds when the key the user asked for was taken and the previous one could not be put
+   * back. It is not a value to fall back from, so it is written as it comes. */
+  if (typeof raw.shortcut === 'string' && (raw.shortcut === '' || /^[A-Za-z0-9+,\./;'[\]\\\-=`]+$/.test(raw.shortcut))) {
+    out.shortcut = raw.shortcut;
+  }
   if (raw.silenceStopMs !== undefined) out.silenceStopMs = sanitizeDuration(raw.silenceStopMs, out.silenceStopMs);
   if (raw.noSpeechStopMs !== undefined) out.noSpeechStopMs = sanitizeDuration(raw.noSpeechStopMs, out.noSpeechStopMs);
   if (ATTEMPT_CHOICES.indexOf(raw.attempts) !== -1) out.attempts = raw.attempts;

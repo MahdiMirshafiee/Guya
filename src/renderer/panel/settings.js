@@ -207,7 +207,17 @@ function renderShortcut() {
     });
     return;
   }
-  GuyaAccelerator.displayParts(shortcutDraft || settings.shortcut).forEach((part) => {
+  const parts = GuyaAccelerator.displayParts(shortcutDraft || settings.shortcut);
+  if (!parts.length) {
+    /* No shortcut is held — the app says nothing rather than showing a combination it is
+     * not listening for — and an empty field would read as a broken control. */
+    const hint = document.createElement('kbd');
+    hint.className = 'key hint-key';
+    hint.textContent = t('ui.pressKeys');
+    F.shortcut.appendChild(hint);
+    return;
+  }
+  parts.forEach((part) => {
     const key = document.createElement('kbd');
     key.className = 'key';
     key.textContent = part;

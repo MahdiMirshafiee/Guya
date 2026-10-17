@@ -19,6 +19,10 @@ const OVERLAY_TOP_GAP = 18;
 let panelWin = null;
 let overlayWin = null;
 let overlayReady = null;
+/* Whether the overlay is meant to be on screen right now. A window that is rebuilt while
+ * a recording is running is shown because this says so, and a page finishing its load
+ * hides itself only when it does not. */
+let overlayWanted = false;
 
 function rendererUrl(name) {
   return appProtocol.url('renderer/' + name);
@@ -159,8 +163,27 @@ function createOverlay() {
   overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   if (IS_MAC && overlayWin.setWindowButtonVisibility) overlayWin.setWindowButtonVisibility(false);
 
-  overlayReady = new Promise((resolve) => overlayWin.webContents.once('did-finish-load', resolve));
-  overlayWin.webContents.on('did-finish-load', () => overlayWin.hide());
+  /* The page starts hidden (`show: false`), and it stays that way until somebody asks
+   * for it — a window that has just been built has not been asked for. Hiding it when
+   * the load finishes was the wrong half of that: a recording that starts while the page
+   * is still loading (the first press after launch, or the press that follows a crashed
+   * renderer, which rebuilds the window) got its window shown and then hidden from under
+   * it by its own load event, leaving an invisible orb over a live microphone. */
+  overlayWanted = false;
+  overlayReady = new Promise((resolve) => {
+    const settle = () => resolve();
+    overlayWin.webContents.once('did-finish-load', () => {
+      if (overlayWin && !overlayWin.isDestroyed() && !overlayWanted) overlayWin.hide();
+      settle();
+    });
+    /* A page that never loads must not leave every queued command waiting for an event
+     * that will not come: the recording then fails ten seconds later saying the
+     * microphone could not be started, with the queued start still in the promise. */
+    overlayWin.webContents.once('did-fail-load', (_event, code, description) => {
+      console.error(`[guya] the overlay page did not load: ${description} (${code})`);
+      settle();
+    });
+  });
 
   /* A renderer that dies takes the microphone with it. Rebuild it on the next use
    * and tell whoever is listening: without this, every start failed ten seconds
@@ -203,11 +226,13 @@ function positionOverlay() {
 function showOverlay() {
   positionOverlay();
   const win = getOverlay();
+  overlayWanted = true;
   win.showInactive();
   win.setAlwaysOnTop(true, 'screen-saver');
 }
 
 function hideOverlay() {
+  overlayWanted = false;
   if (!overlayWin || overlayWin.isDestroyed()) return;
   /* The renderer keeps its animation frame running while hidden — the window is not
    * throttled, so that it can capture — so it has to be told to stop drawing. That is
