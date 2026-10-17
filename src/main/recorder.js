@@ -119,15 +119,19 @@ async function startRecording() {
   cancelHide();
   clearTimers();
 
+  /* Something on screen first, before anything that could take a moment: the user
+   * pressed a key and wants to know the app heard them. Everything below either
+   * replaces this with a session or flashes its refusal on top of it. */
+  state.overlayShown = !windows.panelHasFocus();
+  if (state.overlayShown) windows.showOverlay();
+
   const settings = store.read();
   if (!settings.apiKey) {
-    windows.showOverlay();
     return fail('error.noKey', null, { openPanel: true, hideMs: 4500 });
   }
 
   const mic = await systemIntegration.ensureMicrophoneAccess();
   if (!mic.ok) {
-    windows.showOverlay();
     return fail(mic.errorKey, null, { openPanel: true, hideMs: 6000 });
   }
 
