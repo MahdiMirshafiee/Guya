@@ -354,6 +354,30 @@ group('meters');
  * in a room produces. Each scenario states what has to happen, and the numbers are
  * measured: how much of the speech is flagged, what the floor does while someone is
  * talking, and what the meter and the endpointer do with it. */
+test('a fresh recording starts with a fresh normalizer', () => {
+  /* The normalizer learns each band's floor and ceiling as it hears them. A loud
+   * recording left that memory behind, so the next recording's first seconds were
+   * drawn as if they were quiet — about a quarter dimmer. */
+  const BANDS = 8;
+  const loud = new Array(BANDS).fill(0).map((_, i) => -20 + i);
+  const quiet = new Array(BANDS).fill(0).map((_, i) => -70 + i);
+
+  const used = GuyaAudio.createBandNormalizer(BANDS);
+  const fresh = GuyaAudio.createBandNormalizer(BANDS);
+  const outUsed = new Array(BANDS).fill(0);
+  const outFresh = new Array(BANDS).fill(0);
+
+  /* Five seconds of loud audio, then the reset a new recording performs, then quiet. */
+  for (let t = 0; t < 5000; t += 16) used(loud, 16, outUsed);
+  if (used.reset) used.reset();
+  for (let t = 0; t < 1000; t += 16) used(quiet, 16, outUsed);
+  for (let t = 0; t < 1000; t += 16) fresh(quiet, 16, outFresh);
+
+  outUsed.forEach((value, i) => {
+    assert.ok(Math.abs(value - outFresh[i]) < 0.02, 'band ' + i + ': ' + value.toFixed(3) + ' against ' + outFresh[i].toFixed(3));
+  });
+});
+
 group('capture worklet');
 
 /* The worklet runs in a worker-ish global with no DOM, so the test gives it the two

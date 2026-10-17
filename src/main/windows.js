@@ -198,7 +198,11 @@ function showOverlay() {
 }
 
 function hideOverlay() {
-  if (overlayWin && !overlayWin.isDestroyed() && overlayWin.isVisible()) overlayWin.hide();
+  if (!overlayWin || overlayWin.isDestroyed() || !overlayWin.isVisible()) return;
+  /* The renderer keeps its animation frame running while hidden — the window is not
+   * throttled, so that it can capture — so it has to be told to stop drawing. */
+  sendToOverlay({ type: 'idle' });
+  overlayWin.hide();
 }
 
 /* True when the recorder window is on screen and in front: the window already

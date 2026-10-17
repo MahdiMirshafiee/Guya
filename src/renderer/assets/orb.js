@@ -47,7 +47,7 @@
     const box = config.box || 96;
     const sphere = config.sphere || 27;
     const auraMax = config.auraMax || 1.65;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    let dpr = Math.min(2, window.devicePixelRatio || 1);
 
     let paletteName = config.palette || 'live';
     let palette = PALETTES[paletteName].map((c) => c.slice());
@@ -58,9 +58,11 @@
     let dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     let handle = 0;
     let lastFrame = 0;
+    let lastTick = 0;
     let blendMs = 600; // how long a palette change takes; the caller may shorten it
 
     function resize() {
+      dpr = Math.min(2, window.devicePixelRatio || 1);
       const width = canvas.clientWidth || box;
       const height = canvas.clientHeight || box;
       canvas.width = Math.round(width * dpr);
@@ -191,13 +193,21 @@
       ctx.restore();
     }
 
+    /* Time constants rather than per-frame factors: the frame rate depends on the
+     * display and on whether anything else is drawing, and a decay that is twice as
+     * fast on a 120 Hz screen is a different object on a different machine. */
     function tick(now) {
+      const at = now || performance.now();
+      const dt = Math.min(100, Math.max(0, at - (lastTick || at)));
+      lastTick = at;
       if (!driven) {
-        for (let i = 0; i < bands.length; i++) bands[i] += (REST - bands[i]) * 0.06;
-        level += (0 - level) * 0.08;
+        const kBands = 1 - Math.exp(-dt / 270);
+        const kLevel = 1 - Math.exp(-dt / 200);
+        for (let i = 0; i < bands.length; i++) bands[i] += (REST - bands[i]) * kBands;
+        level += (0 - level) * kLevel;
       }
-      if (typeof config.onFrame === 'function') config.onFrame(now || performance.now());
-      draw(now || performance.now());
+      if (typeof config.onFrame === 'function') config.onFrame(at);
+      draw(at);
       handle = requestAnimationFrame(tick);
     }
 
@@ -222,6 +232,7 @@
         processing = !!bool;
       },
       start() {
+        lastTick = 0;
         if (!handle) handle = requestAnimationFrame(tick);
       },
       stop() {

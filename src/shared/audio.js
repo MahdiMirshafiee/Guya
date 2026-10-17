@@ -218,7 +218,7 @@
     var o = { floorRiseDbPerSec: 2.5, ceilFallDbPerSec: 5, minSpanDb: 14, marginDb: 6, gamma: 0.8, attackMs: 30, releaseMs: 200, smoothMs: 60 };
     if (options) for (var k in options) o[k] = options[k];
     var smooth = new Array(count), floor = new Array(count), ceil = new Array(count), env = new Array(count), ready = false;
-    return function normalize(dbBands, dtMs, out) {
+    function normalize(dbBands, dtMs, out) {
       var dt = dtMs / 1000, a = 1 - Math.exp(-dtMs / o.smoothMs);
       for (var b = 0; b < count; b++) {
         var db = dbBands[b];
@@ -234,7 +234,14 @@
       }
       ready = true;
       return out;
+    }
+    /* A band's floor and ceiling are learned from what it has heard. After a loud
+     * recording the next one starts with that memory, and its first seconds are drawn
+     * as if they were quiet — so a new recording starts by forgetting. */
+    normalize.reset = function () {
+      ready = false;
     };
+    return normalize;
   }
 
   /* --------------------------------------------------------------- trim --- */

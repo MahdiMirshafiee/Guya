@@ -134,6 +134,10 @@ function setState(name, text) {
     orb.stop();
     return;
   }
+  /* Coming back from hidden: the window may be on a display with a different pixel
+   * ratio, and the window itself never resizes, so this is where the canvas is sized
+   * for the screen it is actually on. */
+  if (stage.dataset.state === 'idle') orb.resize();
   orb.setDriven(name === 'listening');
   orb.setProcessing(name === 'processing');
   /* The switch to warm at the instant the microphone goes live is the signal the user
@@ -151,6 +155,8 @@ function setState(name, text) {
 function beginMeasuring() {
   gate = GuyaAudio.createVoiceGate({ initialFloor: lastRoomFloor });
   endpointer = GuyaAudio.createEndpointer({ noSpeechMs: noSpeechStopMs, endSilenceMs: silenceStopMs });
+  bandNormalizer.reset();
+  levels.fill(0);
   lastGate = null;
   chunks = [];
   frameVoiced = [];
@@ -460,6 +466,10 @@ api.onOverlayCommand((payload) => {
     stopCapture();
   } else if (payload.type === 'abort') {
     abortCapture();
+  } else if (payload.type === 'idle') {
+    /* The window is going away: stop the frame loop. A recording in progress is not
+     * interrupted by this — the window can be hidden while the microphone is open. */
+    if (!capturing && !starting) setState('idle');
   } else if (payload.type === 'flash') {
     // The main process sends a key; this window owns the words, in whatever
     // language the interface is in right now.
