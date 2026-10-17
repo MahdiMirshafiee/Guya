@@ -206,6 +206,34 @@ function stripFences(text) {
   return text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
 }
 
+/* A model that has nothing to transcribe sometimes answers with a sentence about the
+ * request instead of the empty answer it was asked for — measured here, with a silent
+ * recording: "Here is the JSON requested:". That sentence is not a transcript, and
+ * typing it into whatever the user is writing is worse than saying nothing was heard.
+ *
+ * Two signals, never one alone, because dropping a real transcript is the worse failure:
+ * the line stops at a colon with nothing after it, or it is a short line that says which
+ * format it was asked for *and* announces it. Someone who says "send me the JSON file"
+ * said a sentence, and a sentence is kept.
+ *
+ * The words below are English, and the colon rule is the one that carries every script:
+ * an announcement that stops at its own colon announces nothing in any language. Other
+ * languages' words for the same thing belong in the dictionary, not in this file, which
+ * is what the test suite insists on. */
+const SHORT_LINE_WORDS = 12;
+const META_ANNOUNCE = /(^|\s)(here|here's|sure|requested|below|following|transcript|transcription|output|response)(\s|,|:|$)/i;
+const META_FORMAT = /\b(json|jsonl|xml)\b/i;
+
+function looksLikeMeta(text) {
+  if (text.length > 120) return false;
+  /* Half a JSON object is a truncated answer, which the salvage below reads; it is
+   * not an announcement of one. */
+  if (/[{}[\]]/.test(text)) return false;
+  if (text.split(/\s+/).length > SHORT_LINE_WORDS) return false;
+  if (/:\s*$/.test(text)) return true;
+  return META_FORMAT.test(text) && META_ANNOUNCE.test(text);
+}
+
 function readTranscript(raw) {
   const text = stripFences(String(raw || '').trim());
   if (!text) return { speech: null, text: '' };
@@ -226,6 +254,8 @@ function readTranscript(raw) {
       /* fall through to the salvage below */
     }
   }
+
+  if (looksLikeMeta(text)) return { speech: false, text: '' };
 
   if (ANSWER_SHAPE.test(text)) {
     if (/"speech"\s*:\s*false/.test(text)) return { speech: false, text: '' };
