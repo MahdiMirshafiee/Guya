@@ -552,6 +552,47 @@ class Cdp {
   check('no renderer errors', !/renderer:.*ERROR/.test(appLog()));
   check('no unhandled rejections', !/UnhandledPromiseRejection/.test(appLog()));
 
+  /* Whatever a closed window does — the system's own button, which the app turns into a
+   * hide so the shortcut outlives it, or a page closing itself, which takes the window with
+   * it — the app is not what closes. That is the point of a shortcut that has to keep
+   * working, and it is how Windows and Linux behaved before: the cross took the app with
+   * it. This is the harsher of the two closes on purpose. */
+  console.log('\n8. the window can go away and the app is still there');
+  panel.send('Runtime.evaluate', { expression: 'window.close()' }).catch(() => {});
+  await sleep(1200);
+  const afterClose = await listTargets().catch(() => []);
+  check(
+    'closing the window does not quit the app',
+    app.exitCode === null && afterClose.some((target) => target.url.includes('overlay.html')),
+    { exitCode: app.exitCode, targets: afterClose.map((target) => target.url.split('/').pop()) }
+  );
+
+  /* Opening the app again is how the window comes back — a second launch asks the first one
+   * for it, which is the only entrance a background app without a tray icon has. */
+  const again = spawn(require('electron'), ['.', `--user-data-dir=${PROFILE}`], {
+    cwd: ROOT,
+    env: Object.assign({}, process.env, { GUYA_DEBUG: '1', GUYA_SKIP_MIC_PREFLIGHT: '1' }),
+    stdio: 'ignore'
+  });
+  const reopened = await waitFor(async () => {
+    const listed = await listTargets().catch(() => []);
+    return listed.find((target) => target.url.includes('panel.html')) || null;
+  }, 10000, 'the window to come back').catch(() => null);
+
+  let visibleAgain = false;
+  if (reopened) {
+    try {
+      const back = new Cdp(reopened.webSocketDebuggerUrl);
+      await back.ready();
+      await back.send('Runtime.enable');
+      visibleAgain = (await back.eval('document.visibilityState')) === 'visible';
+    } catch (_) {
+      visibleAgain = false;
+    }
+  }
+  check('and opening it again brings the window back', visibleAgain === true, visibleAgain);
+  again.kill();
+
   console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 })()
   .catch((err) => {
