@@ -870,6 +870,68 @@ test('every helper carries the keystroke it needs', () => {
   });
 });
 
+/* Each platform's paste path, loaded the way that platform would load it: the
+ * module decides what it is on at import time, so it is reloaded per platform with
+ * `process.platform` faked and a PATH that contains whatever tools are being
+ * pretended. This is the code that failed on Linux once (a shadowed `path` module
+ * meant no tool was ever found), and the only part of the Windows and Linux paths
+ * that can be exercised without those systems. */
+test('the paste path is chosen per platform, from what is actually installed', () => {
+  const systemPath = require.resolve('../src/main/system.js');
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), 'guya-bin-'));
+  const withTool = (name) => {
+    fs.writeFileSync(path.join(binDir, name), '#!/bin/sh\n', { mode: 0o755 });
+  };
+
+  /* The module decides what it is on at import time and reads PATH when it is asked,
+   * so both are arranged around the call itself. */
+  const pasteSupportOn = (platform, pathEnv, wayland) => {
+    const realPlatform = process.platform;
+    const realPath = process.env.PATH;
+    const realWayland = process.env.WAYLAND_DISPLAY;
+    Object.defineProperty(process, 'platform', { value: platform, configurable: true });
+    process.env.PATH = pathEnv;
+    if (wayland === undefined) delete process.env.WAYLAND_DISPLAY;
+    else process.env.WAYLAND_DISPLAY = wayland;
+    delete require.cache[systemPath];
+    try {
+      return require(systemPath).pasteSupport();
+    } finally {
+      Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+      process.env.PATH = realPath;
+      if (realWayland === undefined) delete process.env.WAYLAND_DISPLAY;
+      else process.env.WAYLAND_DISPLAY = realWayland;
+      delete require.cache[systemPath];
+    }
+  };
+
+  /* macOS and Windows have the tool built in. */
+  assert.deepStrictEqual(pasteSupportOn('darwin', ''), { supported: true, tool: 'osascript' });
+  assert.deepStrictEqual(pasteSupportOn('win32', ''), { supported: true, tool: 'powershell' });
+
+  /* Linux has none of its own, so what is installed decides. */
+  assert.deepStrictEqual(pasteSupportOn('linux', binDir), { supported: false, tool: null }, 'an empty bin directory has no helper');
+
+  withTool('xdotool');
+  assert.deepStrictEqual(pasteSupportOn('linux', binDir), { supported: true, tool: 'xdotool' }, 'X11 uses xdotool');
+
+  withTool('wtype');
+  assert.deepStrictEqual(pasteSupportOn('linux', binDir), { supported: true, tool: 'xdotool' }, 'X11 still prefers xdotool');
+  assert.deepStrictEqual(pasteSupportOn('linux', binDir, 'wayland-0'), { supported: true, tool: 'wtype' }, 'Wayland prefers the native tool');
+
+  fs.rmSync(path.join(binDir, 'xdotool'), { force: true });
+  assert.deepStrictEqual(pasteSupportOn('linux', binDir, 'wayland-0'), { supported: true, tool: 'wtype' });
+
+  withTool('ydotool');
+  assert.deepStrictEqual(
+    pasteSupportOn('linux', `${path.dirname(binDir)}${path.delimiter}${binDir}`, 'wayland-0'),
+    { supported: true, tool: 'ydotool' },
+    'a tool in a later PATH entry is still found'
+  );
+
+  fs.rmSync(binDir, { recursive: true, force: true });
+});
+
 /* ============================================================= gemini ==== */
 
 group('gemini client');
