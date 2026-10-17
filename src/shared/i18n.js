@@ -75,6 +75,10 @@
       fa: 'برای جای‌گذاری خودکار، در تنظیمات سیستم › حریم خصوصی و امنیت › دسترس‌پذیری به Guya اجازه بدهید.',
       en: 'To paste automatically, allow Guya under System Settings › Privacy & Security › Accessibility.'
     },
+    'error.pasteAutomation': {
+      fa: 'برای جای‌گذاری خودکار، در تنظیمات سیستم › حریم خصوصی و امنیت › اتوماسیون به Guya اجازه کنترل System Events را بدهید.',
+      en: 'To paste automatically, allow Guya to control System Events under System Settings › Privacy & Security › Automation.'
+    },
     'error.unsupportedPlatform': { fa: 'این سیستم‌عامل پشتیبانی نمی‌شود.', en: 'This platform is not supported.' },
     'error.shortcutTaken': {
       fa: 'این ترکیب کلید در دسترس نیست (برنامه دیگری آن را گرفته است).',

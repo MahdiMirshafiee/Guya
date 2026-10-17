@@ -76,20 +76,39 @@ function pasteSupport() {
 
 /* Types the clipboard content into whatever app currently has focus. Returns
  * i18n keys so the caller can localize. */
+/* Why a keystroke was refused, as a key the window can explain.
+ *
+ * macOS asks for two different permissions and refuses in two different ways: sending
+ * keystrokes at all is Accessibility (-1002 / "not allowed assistive"), while asking
+ * System Events to do it is Automation (-1743 / "not allowed to send Apple events").
+ * Both were reported as Accessibility, so a user who had granted one and not the other
+ * was sent to a pane that could not fix it — which is a paste that never works however
+ * many times the switch is turned on. */
+function pasteFailureKey(message) {
+  if (/1002|not allowed assistive|accessibility/i.test(message)) {
+    return { errorKey: 'error.pastePermission', needsAccessibility: true };
+  }
+  if (/-1743|apple events|automation/i.test(message)) {
+    return { errorKey: 'error.pasteAutomation', needsAutomation: true };
+  }
+  return { errorKey: 'error.pasteFailed' };
+}
+
 function pasteIntoActiveApp() {
   return new Promise((resolve) => {
     if (IS_MAC) {
       execFile(
         'osascript',
-        ['-e', 'tell application "System Events" to keystroke "v" using command down'],
+        /* A key code rather than `keystroke "v"`: keystroke types the character with a
+         * modifier held, which apps are free to treat as text, and several do — the
+         * symptom is a paste that lands beside the caret instead of at it. Key code 9
+         * is the V key, sent as the key it is. */
+        ['-e', 'tell application "System Events" to key code 9 using command down'],
         { timeout: 5000 },
         (err, _stdout, stderr) => {
           if (!err) return resolve({ ok: true });
           const message = String((stderr || '') + (err && err.message ? err.message : ''));
-          if (message.includes('-1743') || /not allowed assistive/i.test(message)) {
-            return resolve({ ok: false, errorKey: 'error.pastePermission', needsAccessibility: true });
-          }
-          resolve({ ok: false, errorKey: 'error.pasteFailed' });
+          resolve(Object.assign({ ok: false }, pasteFailureKey(message)));
         }
       );
       return;
@@ -166,19 +185,24 @@ function requestAccessibility() {
   return { granted: status.granted, prompted: !status.granted };
 }
 
+/* The Automation list lives in a pane of its own, next to Accessibility. */
 function openPrivacySettings(kind) {
   if (IS_MAC) {
-    const pane =
-      kind === 'accessibility'
-        ? 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
-        : 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone';
+    const panes = {
+      accessibility: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
+      automation: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Automation',
+      microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone'
+    };
+    const pane = panes[kind] || panes.microphone;
     return shell.openExternal(pane);
   }
   if (IS_WIN) {
     const page = kind === 'accessibility' ? 'ms-settings:easeofaccess-keyboard' : 'ms-settings:privacy-microphone';
+    /* Windows has no Automation pane: the closest thing is the keyboard page, which is
+     * the same one Accessibility opens. */
     return shell.openExternal(page);
   }
   return Promise.resolve();
 }
 
-module.exports = { copy, pasteIntoActiveApp, pasteSupport, choosePasteTool, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemState };
+module.exports = { copy, pasteIntoActiveApp, pasteSupport, choosePasteTool, pasteFailureKey, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemState };

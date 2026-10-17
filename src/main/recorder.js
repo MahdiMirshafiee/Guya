@@ -267,12 +267,19 @@ async function handleAudioResult(wav, durationMs, voiceMs, trimmedMs) {
   if (settings.pasteAfterTranscribe) {
     // Give the overlay a moment to disappear before typing into the focused app.
     setTimeout(async () => {
+      /* Never into ourselves. With the window in front the transcript is already on
+       * screen, and a keystroke aimed at the recorder lands in a field nobody meant
+       * to write in — a paste that looks like it never happened. */
+      if (windows.panelHasFocus()) return;
       const paste = await systemIntegration.pasteIntoActiveApp();
       if (!paste.ok) {
         state.lastErrorKey = paste.errorKey;
         state.lastErrorVars = null;
         pushPanel();
+        /* macOS can refuse the keystroke in two ways, and each one is turned back on
+         * in a different pane; offer the one that applies. */
         if (paste.needsAccessibility) systemIntegration.openPrivacySettings('accessibility');
+        if (paste.needsAutomation) systemIntegration.openPrivacySettings('automation');
       }
     }, 350);
   }
