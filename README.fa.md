@@ -37,8 +37,8 @@
 | --- | --- | --- |
 | مک (Apple silicon) | `Guya-<version>-macOS-arm64.dmg` | مک‌های سری M |
 | مک (Intel) | `Guya-<version>-macOS-x64.dmg` | مک‌های اینتل |
-| ویندوز (x64) | `Guya-<version>-Windows-x64-Setup.exe` | نصب‌کننده؛ نسخه‌ی `Portable` نیازی به نصب ندارد |
-| ویندوز (arm64) | `Guya-<version>-Windows-arm64-Setup.exe` | ویندوز روی ARM |
+| ویندوز (x64 و arm64) | `Guya-<version>-Windows-Setup.exe` | یک نصب‌کننده با هر دو معماری داخلش |
+| ویندوز، بدون نصب | `Guya-<version>-Windows-Portable.exe` | از هرجا اجرا می‌شود |
 | لینوکس (x64) | `Guya-<version>-Linux-x86_64.AppImage` | پرتابل؛ `chmod +x` و اجرا |
 | لینوکس (x64، دبیان) | `Guya-<version>-Linux-amd64.deb` | `sudo apt install ./Guya-...deb` |
 | لینوکس (arm64) | `Guya-<version>-Linux-arm64.AppImage` | ماشین‌های arm64 |

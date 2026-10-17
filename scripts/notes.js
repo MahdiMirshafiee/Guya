@@ -89,8 +89,8 @@ function render(commits, options) {
   lines.push(
     `| macOS, Apple silicon | \`Guya-${v}-macOS-arm64.dmg\` |`,
     `| macOS, Intel | \`Guya-${v}-macOS-x64.dmg\` |`,
-    `| Windows, x64 | \`Guya-${v}-Windows-x64-Setup.exe\` (or \`…-Portable.exe\`) |`,
-    `| Windows, arm64 | \`Guya-${v}-Windows-arm64-Setup.exe\` (or \`…-Portable.exe\`) |`,
+    `| Windows (x64 or arm64) | \`Guya-${v}-Windows-Setup.exe\` |`,
+    `| Windows, without installing | \`Guya-${v}-Windows-Portable.exe\` |`,
     `| Linux, x64 | \`Guya-${v}-Linux-x86_64.AppImage\` or \`Guya-${v}-Linux-amd64.deb\` |`,
     `| Linux, arm64 | \`Guya-${v}-Linux-arm64.AppImage\` or \`Guya-${v}-Linux-arm64.deb\` |`,
     ''

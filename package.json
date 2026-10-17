@@ -40,13 +40,6 @@
             "x64",
             "arm64"
           ]
-        },
-        {
-          "target": "zip",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
         }
       ],
       "artifactName": "Guya-${version}-macOS-${arch}.${ext}",
@@ -74,7 +67,7 @@
       ]
     },
     "nsis": {
-      "artifactName": "Guya-${version}-Windows-${arch}-Setup.${ext}"
+      "artifactName": "Guya-${version}-Windows-Setup.${ext}"
     },
     "linux": {
       "target": [
@@ -114,7 +107,7 @@
       "artifactName": "Guya-${version}-Linux-${arch}.${ext}"
     },
     "portable": {
-      "artifactName": "Guya-${version}-Windows-${arch}-Portable.${ext}"
+      "artifactName": "Guya-${version}-Windows-Portable.${ext}"
     },
     "appImage": {
       "artifactName": "Guya-${version}-Linux-${arch}.${ext}"

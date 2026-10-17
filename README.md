@@ -39,8 +39,8 @@ Download the file for your system from [Releases](../../releases/latest):
 | --- | --- | --- |
 | macOS (Apple silicon) | `Guya-<version>-macOS-arm64.dmg` | M-series Macs |
 | macOS (Intel) | `Guya-<version>-macOS-x64.dmg` | Intel Macs |
-| Windows (x64) | `Guya-<version>-Windows-x64-Setup.exe` | Installer; the `Portable` build needs no install |
-| Windows (arm64) | `Guya-<version>-Windows-arm64-Setup.exe` | Windows on ARM |
+| Windows (x64 and arm64) | `Guya-<version>-Windows-Setup.exe` | One installer, both architectures inside |
+| Windows, without installing | `Guya-<version>-Windows-Portable.exe` | Runs from anywhere |
 | Linux (x64) | `Guya-<version>-Linux-x86_64.AppImage` | Portable; `chmod +x` and run |
 | Linux (x64, Debian) | `Guya-<version>-Linux-amd64.deb` | `sudo apt install ./Guya-...deb` |
 | Linux (arm64) | `Guya-<version>-Linux-arm64.AppImage` | arm64 machines |
