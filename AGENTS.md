@@ -147,11 +147,14 @@ offers two downloads for one job. The script is the whole publish path and can b
 run by hand with `gh` on the PATH:
 
 ```bash
-scripts/publish-release.sh v1.0.0 notes.md dist/*.dmg dist/*.exe dist/*.AppImage dist/*.deb
+GITHUB_REPOSITORY=owner/Guya scripts/publish-release.sh v1.0.0 notes.md dist/*.dmg dist/*.exe dist/*.AppImage dist/*.deb
 ```
 
+`npm run notes v1.0.0 > notes.md` writes the notes the workflow writes, and the script
+wants `GITHUB_REPOSITORY` because it also runs outside a checkout.
+
 `.github/workflows/ci.yml` runs the unit tests on all three systems, the
-end-to-end suite on macOS, and packages both platforms on every push.
+end-to-end suite on macOS, and packages all three platforms on every push.
 
 The artifacts are unsigned unless `CSC_LINK`/`CSC_KEY_PASSWORD` (macOS) and the
 Windows equivalent are set as repository secrets; without them macOS shows the

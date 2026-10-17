@@ -16,7 +16,13 @@ cd "$(dirname "$0")/.."
 
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 APP="/Applications/Guya.app"
-BUNDLE="dist/mac-arm64/Guya.app"
+# electron-builder names the unpacked directory after the architecture it built for, and a
+# run on this machine builds for this machine. Hardcoding -arm64 removed the installed app
+# and then failed to copy on an Intel Mac, leaving no app installed at all.
+case "$(uname -m)" in
+  arm64) BUNDLE="dist/mac-arm64/Guya.app" ;;
+  *) BUNDLE="dist/mac/Guya.app" ;;
+esac
 
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "this script installs the macOS app; use npm run dist:win elsewhere" >&2
@@ -38,6 +44,13 @@ npm test
 
 echo "==> packaging"
 npx electron-builder --mac dir
+
+# The installed copy is only replaced once there is something to replace it with: this
+# script used to delete it first and then fail on a missing bundle.
+if [ ! -d "$BUNDLE" ]; then
+  echo "no build at $BUNDLE — packaging did not produce the app" >&2
+  exit 1
+fi
 
 echo "==> installing $APP"
 rm -rf "$APP"

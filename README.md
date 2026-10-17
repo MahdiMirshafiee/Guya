@@ -52,9 +52,11 @@ for Intel and AMD. On Windows an ARM machine can run the x64 build too.
 
 The builds are **not code-signed**, so the system will warn the first time:
 
-- **macOS** — "Guya cannot be opened because the developer cannot be verified":
-  right-click the app and choose *Open*, or
-  `xattr -dr com.apple.quarantine /Applications/Guya.app`.
+- **macOS** — "Guya cannot be opened because the developer cannot be verified".
+  On macOS 15 and later there is no *Open* in the Control-click menu for an
+  unnotarised app; do this instead, once:
+  `xattr -dr com.apple.quarantine /Applications/Guya.app`, or allow it in
+  System Settings → Privacy & Security → *Open Anyway*.
 - **Windows** — SmartScreen says "Windows protected your PC": *More info* → *Run anyway*.
 - **Linux** — the AppImage needs `--no-sandbox` on some distributions if Chrome's
   sandbox cannot be used: `./Guya-*.AppImage --no-sandbox`.
@@ -83,9 +85,9 @@ The settings screen opens when there is no key yet.
   does the silence timer.)
 - **The orb tells you which state you are in.** It is blue while the microphone is
   opening and turns warm the moment it is actually live — speak after that, not before.
-- **Everything is a setting.** The two waits, the attempts per transcription, the
-  model, the spoken language, and the instructions sent to the model. Each accepts a
-  value the picker does not offer through *Custom…*.
+- **Everything is a setting.** The two waits, the model and the instructions sent to
+  the model, and both waits accept a value the picker does not list through *Custom…*;
+  the attempts per transcription and the spoken language are short closed lists.
 - **A recording nobody spoke into is not a question.** The app says "no speech detected"
   and sends nothing — and if a reply ever comes back as a sentence *about* the request
   instead of the transcript, it is discarded rather than typed into your window.
@@ -105,8 +107,8 @@ the app no menu bar.
 - **The key** is written encrypted using the operating system's own service (the
   keychain on macOS, DPAPI on Windows); a system without one keeps it in the settings
   file, with permissions set to the owner.
-- **Settings** live in `~/Library/Application Support/Guya/settings.json` on macOS and
-  `%APPDATA%\Guya\settings.json` on Windows.
+- **Settings** live in `~/Library/Application Support/Guya/settings.json` on macOS,
+  `%APPDATA%\Guya\settings.json` on Windows, and `~/.config/Guya/settings.json` on Linux.
 - **The microphone** is open only while recording. The app refuses to type into other
   apps until the system has granted Accessibility, rather than failing later.
 
@@ -119,7 +121,7 @@ the app no menu bar.
 | Spoken language | Auto-detect, or one language for more accuracy |
 | Stop after silence | Off, or 1–120 seconds (3 by default) |
 | Stop if nobody speaks | Off, or 1–120 seconds (8 by default) |
-| Attempts | How many times a failed request is retried (3 by default) |
+| Attempts | Tries per transcription, the first one included (3 by default) |
 | System prompt | The instructions sent with every recording; editable, and resettable |
 | Copy to clipboard | Copy the transcript when it arrives |
 | Paste automatically | Type it into the focused app (needs macOS Accessibility) |
@@ -153,14 +155,14 @@ Packaging, per platform:
 
 ```bash
 npm run dist:this    # the system you are on
-npm run dist:mac     # dmg + zip, arm64 and x64
+npm run dist:mac     # dmg, arm64 and x64
 npm run dist:win     # nsis installer + portable, x64 and arm64
 npm run dist:linux   # AppImage + deb, x64 and arm64
 ```
 
-Artifacts land in `dist/` and are not committed. Each platform packages best on its
-own system, which is what CI does — and a `.deb` needs `dpkg` while an AppImage needs
-`appimagetool`, both of which the workflows install for you.
+Artifacts land in `dist/` and are not committed. Each platform packages on its own
+system — that is what CI does — and `electron-builder` fetches the tooling it needs for
+a `.deb` or an AppImage itself, so the runners start with nothing installed.
 
 ## How it is built
 

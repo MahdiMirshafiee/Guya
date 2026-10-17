@@ -30,11 +30,16 @@ jobs:
         shell: bash
         run: |
           version="$(node -p "require('./package.json').version")"
-          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          # A run started by hand on a branch has a tag input or nothing: comparing
+          # github.ref_name there compared the branch name against the version, so the
+          # documented dry run failed before it built anything.
+          tag="${{ github.event.inputs.tag }}"
+          if [ -z "$tag" ] && [ "${{ github.ref_type }}" = "tag" ]; then tag="${{ github.ref_name }}"; fi
           if [ -n "$tag" ] && [ "$tag" != "v$version" ]; then
             echo "::error::tag $tag does not match package.json v$version — release with scripts/release.sh $version"
             exit 1
           fi
+          echo "publishing $tag (package.json v$version)"
 
   build:
     name: build (${{ matrix.name }})
@@ -49,7 +54,6 @@ jobs:
             target: mac
             artifacts: |
               dist/*.dmg
-              dist/*.zip
           - name: Windows
             os: windows-latest
             target: win
@@ -127,7 +131,7 @@ jobs:
           # that ships on macOS, which is the difference between a step that can be
           # reproduced on a laptop and one that only runs on the runner.
           files=()
-          while IFS= read -r file; do files+=("$file"); done < <(find artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) | sort)
+          while IFS= read -r file; do files+=("$file"); done < <(find artifacts -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) | sort)
           printf 'attaching:\n%s\n' "${files[@]}"
           # The publish itself is scripts/publish-release.sh: it creates the release, or
           # re-cuts one that is already there, and `--repo` is why it needs to exist —

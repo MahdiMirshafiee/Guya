@@ -9,7 +9,7 @@
  * download for their machine.
  *
  *   node scripts/notes.js                  # since the previous tag, up to HEAD
- *   node scripts/notes.js v1.0.0 v1.1.0    # an explicit range
+ *   node scripts/notes.js v1.1.0 v1.0.0    # the tag, then what it is compared against
  */
 'use strict';
 
@@ -80,7 +80,7 @@ function render(commits, options) {
     lines.push('');
   }
 
-  const hidden = commits.filter((commit) => HIDDEN.indexOf(commit.type) !== -1 && !/^chore\(release\)/.test(commit.type));
+  const hidden = commits.filter((commit) => HIDDEN.indexOf(commit.type) !== -1);
   if (!lines.length && !options.firstRelease) lines.push('Maintenance and documentation only.', '');
 
   lines.push('### Downloads', '');
@@ -105,8 +105,10 @@ function render(commits, options) {
     '`amd64`) for Intel and AMD. On Windows an ARM machine can run the x64 build too.',
     ''
   );
-  lines.push('The builds are unsigned: macOS needs a right-click → Open the first time,');
-  lines.push('and Windows shows SmartScreen\'s "More info → Run anyway".', '');
+  lines.push('The builds are unsigned. On macOS 15 and later there is no *Open* in the');
+  lines.push('Control-click menu for an app like this: `xattr -dr com.apple.quarantine');
+  lines.push('/Applications/Guya.app` once, or System Settings → Privacy & Security →');
+  lines.push('*Open Anyway*. Windows shows SmartScreen\'s "More info → Run anyway".', '');
 
   if (options.previous) {
     lines.push(`**Full comparison:** [\`${options.previous}…${options.tag}\`](${options.compareUrl})`, '');
