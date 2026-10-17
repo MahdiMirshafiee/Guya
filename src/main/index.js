@@ -34,6 +34,12 @@ const systemIntegration = require('./system');
 const ipc = require('./ipc');
 
 function start() {
+  /* Windows identifies an app by this string, not by its name: without it the installed
+   * build takes its identity from the shortcut the installer made and the portable one
+   * has none, so the same app shows up twice on the taskbar and in the jump list. The
+   * value is the bundle id the installer is built with. */
+  if (process.platform === 'win32') app.setAppUserModelId('com.local.guya');
+
   platform.applyDockIcon();
   appProtocol.install();
   permissions.install();

@@ -86,6 +86,10 @@
     },
     'error.shortcutInvalid': { fa: 'این ترکیب کلید معتبر نیست.', en: 'That shortcut is not valid.' },
     'error.loginItemPackagedOnly': { fa: 'این گزینه فقط در نسخه نصب‌شده کار می‌کند.', en: 'This option only works in the installed app.' },
+    'error.loginItemUnsupported': {
+      fa: 'اجرا هنگام ورود در لینوکس از تنظیمات خود میزکار انجام می‌شود، پس این گزینه اینجا کار نمی‌کند.',
+      en: 'Starting at login is the desktop environment\'s job on Linux, so this app cannot set it.'
+    },
     'error.micNotFound': { fa: 'میکروفونی پیدا نشد.', en: 'No microphone found.' },
     'error.micBusy': { fa: 'میکروفون در اختیار برنامه دیگری است.', en: 'Another app is using the microphone.' },
 

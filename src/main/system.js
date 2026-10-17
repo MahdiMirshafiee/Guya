@@ -15,22 +15,26 @@ function copy(text) {
   if (typeof text === 'string' && text.length) clipboard.writeText(text);
 }
 
+/* macOS and Windows both keep a login item for the app themselves. Linux does not: a
+ * desktop there starts an application from a `~/.config/autostart` entry the desktop
+ * environment owns, which is why Electron's own call does nothing there. Reporting
+ * success for a switch that cannot work is the one thing worse than not offering it —
+ * the user turns it on, sees it on, and the app is never there after a login. */
+/* Pure, so it can be tested from a machine that is none of these. */
+function loginItemRefusal(platform, packaged) {
+  if (!packaged) return 'error.loginItemPackagedOnly';
+  if (platform !== 'darwin' && platform !== 'win32') return 'error.loginItemUnsupported';
+  return null;
+}
+
 function loginItem(openAtLogin) {
-  if (!app.isPackaged) return { ok: false, errorKey: 'error.loginItemPackagedOnly' };
+  const refusal = loginItemRefusal(process.platform, app.isPackaged);
+  if (refusal) return { ok: false, errorKey: refusal };
   try {
     app.setLoginItemSettings({ openAtLogin: !!openAtLogin, openAsHidden: true });
     return { ok: true };
   } catch (err) {
     return { ok: false, errorKey: 'error.unexpected' };
-  }
-}
-
-function loginItemState() {
-  if (!app.isPackaged) return false;
-  try {
-    return !!app.getLoginItemSettings().openAtLogin;
-  } catch (_) {
-    return false;
   }
 }
 
@@ -147,15 +151,24 @@ async function ensureMicrophoneAccess() {
   } catch (_) {
     return { ok: true };
   }
-  if (status === 'granted') return { ok: true };
 
-  if (IS_MAC && status === 'not-determined') {
-    try {
-      const granted = await systemPreferences.askForMediaAccess('microphone');
-      if (granted) return { ok: true };
-    } catch (_) {
-      /* fall through to the denied branch */
+  /* Only "denied" and "restricted" are answers that mean the system will refuse the
+   * capture: the user turned the microphone off for the app, or a policy did. Anything
+   * else — including the "unknown" Windows reports before the question has been asked —
+   * means it has not been put yet, and the way to put it is to open the device. Refusing
+   * on those told a Windows user their microphone was turned off when it was not, with
+   * nothing to click and nothing to fix. */
+  const refused = status === 'denied' || status === 'restricted';
+  if (!refused) {
+    if (IS_MAC && status === 'not-determined') {
+      try {
+        if (await systemPreferences.askForMediaAccess('microphone')) return { ok: true };
+        return { ok: false, errorKey: 'error.micDenied', needsSettings: true };
+      } catch (_) {
+        /* fall through: asking failed, and the capture path will have its own say */
+      }
     }
+    return { ok: true };
   }
   return { ok: false, errorKey: 'error.micDenied', needsSettings: true };
 }
@@ -205,4 +218,4 @@ function openPrivacySettings(kind) {
   return Promise.resolve();
 }
 
-module.exports = { copy, pasteIntoActiveApp, pasteSupport, choosePasteTool, pasteFailureKey, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemState };
+module.exports = { copy, pasteIntoActiveApp, pasteSupport, choosePasteTool, pasteFailureKey, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemRefusal };

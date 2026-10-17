@@ -888,6 +888,35 @@ test('no helper means no claim that it works', () => {
   assert.strictEqual(systemIntegration.choosePasteTool([], true), null);
 });
 
+test('the settings the system will not honour are refused, not stored', async () => {
+  /* Linux has no login item for Electron to set: a desktop starts an application from
+   * its own autostart entry. The call was made anyway and reported success, so the switch
+   * stayed on across restarts while nothing ever started at login. */
+  assert.strictEqual(systemIntegration.loginItemRefusal('linux', true), 'error.loginItemUnsupported', 'Linux says so instead of pretending');
+  assert.strictEqual(systemIntegration.loginItemRefusal('darwin', true), null, 'macOS sets it');
+  assert.strictEqual(systemIntegration.loginItemRefusal('win32', true), null, 'and so does Windows');
+  assert.strictEqual(systemIntegration.loginItemRefusal('darwin', false), 'error.loginItemPackagedOnly', 'an unpackaged build cannot set it on any system');
+  assert.deepStrictEqual(systemIntegration.loginItem(true), { ok: false, errorKey: 'error.loginItemPackagedOnly' }, 'which is what a development run reports');
+
+  /* The microphone: only "denied" and "restricted" mean the system will refuse the
+   * capture. Windows reports "unknown" before anything has been asked, and reading that
+   * as a denial told the user their microphone was off with nothing to fix. */
+  const status = fakeElectron.systemPreferences.getMediaAccessStatus;
+  try {
+    fakeElectron.systemPreferences.getMediaAccessStatus = () => 'unknown';
+    assert.strictEqual((await systemIntegration.ensureMicrophoneAccess()).ok, true, 'an unanswered question is not a refusal');
+    fakeElectron.systemPreferences.getMediaAccessStatus = () => 'denied';
+    const denied = await systemIntegration.ensureMicrophoneAccess();
+    assert.strictEqual(denied.ok, false, 'a refusal is');
+    assert.strictEqual(denied.errorKey, 'error.micDenied');
+    assert.strictEqual(denied.needsSettings, true, 'and the window can offer the pane');
+    fakeElectron.systemPreferences.getMediaAccessStatus = () => 'restricted';
+    assert.strictEqual((await systemIntegration.ensureMicrophoneAccess()).ok, false, 'a policy refusal too');
+  } finally {
+    fakeElectron.systemPreferences.getMediaAccessStatus = status;
+  }
+});
+
 test('every helper carries the keystroke it needs', () => {
   ['xdotool', 'ydotool', 'wtype'].forEach((name) => {
     const tool = systemIntegration.choosePasteTool([name], false);

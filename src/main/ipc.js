@@ -62,7 +62,12 @@ function register() {
 
     if (typeof clean.launchAtLogin === 'boolean' && clean.launchAtLogin !== before.launchAtLogin) {
       const login = systemIntegration.loginItem(next.launchAtLogin);
-      if (!login.ok) warningKey = warningKey || login.errorKey;
+      if (!login.ok) {
+        /* The system refused it — or is a system that has no login item to set — and a
+         * switch that stays on while nothing starts at login is a lie about the app. */
+        warningKey = warningKey || login.errorKey;
+        next = store.update({ launchAtLogin: before.launchAtLogin });
+      }
     }
 
     state_.pushPanel();
@@ -92,9 +97,17 @@ function register() {
     return { ok: true };
   });
 
-  ipcMain.handle('system:open-privacy', (_event, kind) => {
-    systemIntegration.openPrivacySettings(kind);
-    return { ok: true };
+  ipcMain.handle('system:open-privacy', async (_event, kind) => {
+    /* Opening a pane is the system's job and it can refuse — a URI handler that is not
+     * registered, a desktop with no settings app. The promise used to be dropped, and an
+     * unhandled rejection in the main process takes the whole app with it. */
+    try {
+      await systemIntegration.openPrivacySettings(kind);
+      return { ok: true };
+    } catch (err) {
+      console.warn('[guya] could not open that settings pane:', err && err.message);
+      return { ok: false };
+    }
   });
 
   /* The window's close button hides the window on every platform, so that the
