@@ -89,10 +89,21 @@ function render(commits, options) {
   lines.push(
     `| macOS, Apple silicon | \`Guya-${v}-macOS-arm64.dmg\` |`,
     `| macOS, Intel | \`Guya-${v}-macOS-x64.dmg\` |`,
-    `| Windows (x64 or arm64) | \`Guya-${v}-Windows-Setup.exe\` |`,
-    `| Windows, without installing | \`Guya-${v}-Windows-Portable.exe\` |`,
+    `| Windows, x64 | \`Guya-${v}-Windows-x64-Setup.exe\` |`,
+    `| Windows, arm64 | \`Guya-${v}-Windows-arm64-Setup.exe\` |`,
+    `| Windows, without installing | \`Guya-${v}-Windows-x64-Portable.exe\` |`,
     `| Linux, x64 | \`Guya-${v}-Linux-x86_64.AppImage\` or \`Guya-${v}-Linux-amd64.deb\` |`,
     `| Linux, arm64 | \`Guya-${v}-Linux-arm64.AppImage\` or \`Guya-${v}-Linux-arm64.deb\` |`,
+    ''
+  );
+  /* The files above are every architecture the build makes; the release carries the ones
+   * the three runners can make, because each platform is packaged on its own system. Saying
+   * which is which is cheaper than a download that ends in "bad CPU type". */
+  lines.push(
+    'The release is built by three runners, so it carries the architecture each of those',
+    'machines has: macOS arm64, Windows x64 and Linux x64. The Intel, arm64 Windows and',
+    'arm64 Linux files named above are built by the same commands on a machine of that kind —',
+    '`npm run dist:mac`, `npm run dist:win` and `npm run dist:linux` each build both.',
     ''
   );
   lines.push('The builds are unsigned: macOS needs a right-click → Open the first time,');

@@ -14,11 +14,11 @@
     "check": "node scripts/check-structure.js",
     "icons": "node scripts/make-icons.js",
     "install:mac": "scripts/install.sh",
-    "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win",
-    "dist": "electron-builder --mac --win --linux",
+    "dist:mac": "electron-builder --mac --x64 && electron-builder --mac --arm64",
+    "dist:win": "electron-builder --win --x64 && electron-builder --win --arm64",
+    "dist": "electron-builder --mac --x64 && electron-builder --mac --arm64 && electron-builder --win --x64 && electron-builder --win --arm64 && electron-builder --linux --x64 && electron-builder --linux --arm64",
     "e2e": "node test/e2e.js",
-    "dist:linux": "electron-builder --linux",
+    "dist:linux": "electron-builder --linux --x64 && electron-builder --linux --arm64",
     "dist:this": "node scripts/dist-this.js",
     "notes": "node scripts/notes.js"
   },
@@ -34,13 +34,7 @@
       "icon": "build/icon.png",
       "category": "public.app-category.productivity",
       "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
+        "dmg"
       ],
       "artifactName": "Guya-${version}-macOS-${arch}.${ext}",
       "extendInfo": {
@@ -50,41 +44,17 @@
     "win": {
       "icon": "build/icon-shape.png",
       "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
+        "nsis",
+        "portable"
       ]
     },
     "nsis": {
-      "artifactName": "Guya-${version}-Windows-Setup.${ext}"
+      "artifactName": "Guya-${version}-Windows-${arch}-Setup.${ext}"
     },
     "linux": {
       "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        },
-        {
-          "target": "deb",
-          "arch": [
-            "x64",
-            "arm64"
-          ]
-        }
+        "AppImage",
+        "deb"
       ],
       "category": "Utility",
       "icon": "build/icons",
@@ -107,11 +77,15 @@
       "artifactName": "Guya-${version}-Linux-${arch}.${ext}"
     },
     "portable": {
-      "artifactName": "Guya-${version}-Windows-Portable.${ext}"
+      "artifactName": "Guya-${version}-Windows-${arch}-Portable.${ext}"
     },
     "appImage": {
       "artifactName": "Guya-${version}-Linux-${arch}.${ext}"
-    }
+    },
+    "electronLanguages": [
+      "en-US",
+      "fa"
+    ]
   },
   "devDependencies": {
     "electron": "^44.7.1",
