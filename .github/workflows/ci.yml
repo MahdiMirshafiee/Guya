@@ -63,7 +63,23 @@ jobs:
       # A display, and the shared libraries Electron links against: without one of them the
       # process exits before a window exists, and the suite can only report that it waited.
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libnss3 libatk-bridge2.0-0 libgbm1 libasound2t64 libgtk-3-0
-      - run: xvfb-run --auto-servernum npm run e2e
+      - name: end-to-end (Linux)
+        shell: bash
+        run: |
+          set +e
+          xvfb-run --auto-servernum npm run e2e > e2e.log 2>&1
+          status=$?
+          tail -c 20000 e2e.log
+          # A job's log needs repository rights to read; the annotations it writes do not.
+          # A red run on a runner nobody can log into has to carry its own reason.
+          if [ $status -ne 0 ]; then
+            { grep -E '✗|e2e error|last lines of the app log' e2e.log | head -8
+              grep -E '^    \|' e2e.log | head -8
+            } | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit $status
 
   e2e-windows:
     name: end-to-end (Windows)
@@ -76,7 +92,23 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run e2e
+      - name: end-to-end (Windows)
+        shell: bash
+        run: |
+          set +e
+          npm run e2e > e2e.log 2>&1
+          status=$?
+          tail -c 20000 e2e.log
+          # Same as the Linux job: what a failing run has to say travels as annotations,
+          # because the log itself needs rights the person reading the red mark may not have.
+          if [ $status -ne 0 ]; then
+            { grep -E '✗|e2e error|last lines of the app log' e2e.log | head -8
+              grep -E '^    \|' e2e.log | head -8
+            } | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+          fi
+          exit $status
 
   package:
     name: package check (${{ matrix.name }})
