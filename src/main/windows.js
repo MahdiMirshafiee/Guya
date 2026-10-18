@@ -62,8 +62,13 @@ function createPanel() {
      * at a control. Without this the first one only focused the window, and the
      * control looked broken. */
     acceptFirstMouse: true,
-    // Real desktop material behind the page: macOS vibrancy, Windows acrylic.
-    backgroundColor: IS_MAC ? '#00000000' : dark ? '#1c1c20' : '#f1f1f4',
+    /* Real desktop material behind the page: macOS vibrancy, Windows acrylic. A material
+     * is only visible through a transparent window background — with an opaque one the
+     * system's backdrop was drawn and then covered by the app's own colour, which is why
+     * the Windows window looked flat where the macOS one did not. Windows 11 22H2 and newer
+     * draw the material; older versions ignore the option and show the colour underneath,
+     * which is why there is still a colour. */
+    backgroundColor: IS_MAC || IS_WIN ? '#00000000' : dark ? '#1c1c20' : '#f1f1f4',
     ...(IS_MAC ? { vibrancy: 'under-window', visualEffectState: 'followWindow' } : {}),
     ...(IS_WIN ? { backgroundMaterial: 'acrylic' } : {}),
     /* The window buttons stay out of the layout and appear when the pointer

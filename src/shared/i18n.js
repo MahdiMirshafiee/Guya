@@ -136,6 +136,25 @@
     'ui.shortcutNeedsModifier': { fa: 'حداقل یک کلید کنترلی لازم است.', en: 'Use at least one modifier key.' },
     'ui.shortcutUnsupported': { fa: 'این کلید پشتیبانی نمی‌شود.', en: 'That key is not supported.' },
     'ui.shortcutReserved': { fa: 'این ترکیب توسط سیستم استفاده می‌شود.', en: 'The system already uses that combination.' },
+    'ui.keyHelpSummary': { fa: 'کلید API را از کجا بگیرم؟', en: 'Where do I get an API key?' },
+    'ui.keyHelpStep1': {
+      fa: 'Google AI Studio را باز کنید و با حساب گوگل وارد شوید — رایگان است.',
+      en: 'Open Google AI Studio and sign in with a Google account — it is free.'
+    },
+    'ui.keyHelpStep2': {
+      fa: 'روی «Create API key» بزنید و کلید ساخته‌شده را کپی کنید.',
+      en: 'Press "Create API key" and copy the key it makes.'
+    },
+    'ui.keyHelpStep3': {
+      fa: 'همین‌جا در کادر بالا بچسبانید؛ ذخیره خودکار است.',
+      en: 'Paste it in the field above — it saves itself.'
+    },
+    'ui.keyHelpOpen': { fa: 'باز کردن Google AI Studio', en: 'Open Google AI Studio' },
+    'ui.shortcutNotHeld': {
+      fa: 'این شورت‌کات روی این سیستم ثبت نشد؛ برنامه‌ی دیگری آن را گرفته است. یکی دیگر انتخاب کنید.',
+      en: 'That shortcut could not be registered on this system — another app is holding it. Choose another one.'
+    },
+    'ui.shortcutSame': { fa: 'همین شورت‌کات از قبل فعال است.', en: 'That is the shortcut already in use.' },
 
     /* ---- panel actions and status ---- */
     'action.test': { fa: 'تست کلید', en: 'Test key' },

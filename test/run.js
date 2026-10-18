@@ -60,7 +60,11 @@ fakeElectron.globalShortcut = {
   },
   unregister: (accelerator) => shortcutHandlers.delete(accelerator),
   unregisterAll: () => shortcutHandlers.clear(),
-  isRegistered: (accelerator) => shortcutHandlers.has(accelerator)
+  isRegistered: (accelerator) => shortcutHandlers.has(accelerator),
+  setSuspended: (suspended) => {
+    fakeElectron.globalShortcut.suspended = suspended;
+  },
+  suspended: false
 };
 
 /* The recorder drives real windows; here they are only told what happened. */
@@ -733,6 +737,29 @@ test('punctuation and shifted punctuation are captured', () => {
   );
 });
 
+test('the combinations the system owns are refused per platform', () => {
+  const press = (key, code, mods) =>
+    GuyaAccelerator.fromKeyboardEvent(
+      Object.assign({ key, code, metaKey: false, ctrlKey: false, altKey: false, shiftKey: false }, mods || {})
+    );
+
+  /* The list was macOS-shaped and every system was checked against it, so the form offered
+   * combinations Windows will not hand out — `Alt+Space` chief among them, which is the
+   * combination a Windows user is most likely to try. Accepted by the form, stored, refused
+   * by the system: the app then held no shortcut at all while the field showed one. */
+  GuyaAccelerator.setPlatform('win32');
+  assert.strictEqual(press(' ', 'Space', { altKey: true }).errorKey, 'ui.shortcutReserved', 'Alt+Space is the window menu');
+  assert.strictEqual(press('Tab', 'Tab', { altKey: true }).errorKey, 'ui.shortcutReserved', 'Alt+Tab switches windows');
+  assert.strictEqual(press('l', 'KeyL', { metaKey: true }).errorKey, 'ui.shortcutReserved', 'and so do the Windows-key combinations');
+  assert.strictEqual(press(' ', 'Space', { ctrlKey: true, shiftKey: true }).accelerator, 'CommandOrControl+Shift+Space', 'while a free combination is offered');
+  assert.strictEqual(press('q', 'KeyQ', { metaKey: true }).accelerator, 'Super+Q', 'and Ctrl+Q is not the system\'s here');
+
+  /* On macOS the same keys are free, and its own are not. */
+  GuyaAccelerator.setPlatform('darwin');
+  assert.strictEqual(press('q', 'KeyQ', { metaKey: true }).errorKey, 'ui.shortcutReserved');
+  assert.strictEqual(press(' ', 'Space', { altKey: true }).accelerator, 'Alt+Space', 'Option+Space is nobody\'s key');
+});
+
 test('bare letters are rejected, function keys are not', () => {
   const rejected = GuyaAccelerator.fromKeyboardEvent(keyEvent({ key: 'd', code: 'KeyD' }));
   assert.ok(rejected.errorKey && !rejected.accelerator);
@@ -782,7 +809,14 @@ group('settings store');
 
 test('defaults are complete', () => {
   const settings = store.read();
-  assert.strictEqual(settings.model, 'gemini-2.5-flash');
+  assert.strictEqual(settings.model, 'gemini-3.1-flash-lite');
+  /* The list the picker offers before the API is asked. It is what most people choose
+   * from, so it is asserted rather than left to drift. */
+  assert.deepStrictEqual(
+    require('../src/shared/defaults.js').KNOWN_MODELS,
+    ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'],
+    'the default models, newest first'
+  );
   assert.strictEqual(settings.language, 'auto');
   assert.strictEqual(settings.uiLanguage, 'fa');
   assert.strictEqual(settings.copyToClipboard, true);
@@ -894,6 +928,16 @@ test('a refused keystroke names the permission it needs', () => {
   assert.strictEqual(other.needsAutomation, undefined);
 });
 
+test('one address the app may open, and nothing else', async () => {
+  openedPanes.length = 0;
+  await systemIntegration.openExternal('aistudio');
+  assert.strictEqual(openedPanes[openedPanes.length - 1], 'https://aistudio.google.com/apikey', 'the page a key comes from');
+  openedPanes.length = 0;
+  await systemIntegration.openExternal('https://example.com/evil');
+  await systemIntegration.openExternal('file:///etc/passwd');
+  assert.strictEqual(openedPanes.length, 0, 'and nothing a renderer could ever name');
+});
+
 test('no helper means no claim that it works', () => {
   assert.strictEqual(systemIntegration.choosePasteTool([], false), null);
   assert.strictEqual(systemIntegration.choosePasteTool([], true), null);
@@ -946,6 +990,39 @@ test('the settings the system will not honour are refused, not stored', async ()
   assert.strictEqual(systemIntegration.loginItemRefusal('win32', true), null, 'and so does Windows');
   assert.strictEqual(systemIntegration.loginItemRefusal('darwin', false), 'error.loginItemPackagedOnly', 'an unpackaged build cannot set it on any system');
   assert.deepStrictEqual(systemIntegration.loginItem(true), { ok: false, errorKey: 'error.loginItemPackagedOnly' }, 'which is what a development run reports');
+
+  /* Windows has no other way for the app to know the system started it, and a portable
+   * build runs from a folder its launcher deletes: the Run entry has to point at the file
+   * the user has, and carry the argument that keeps the window shut. */
+  const win = systemIntegration.loginItemOptions(true, 'win32', 'D:\\Downloads\\Guya-1.0.0-Windows-x64-Portable.exe');
+  assert.deepStrictEqual(win.args, [systemIntegration.HIDDEN_ARG]);
+  assert.strictEqual(win.path, 'D:\\Downloads\\Guya-1.0.0-Windows-x64-Portable.exe');
+  assert.deepStrictEqual(systemIntegration.loginItemOptions(true, 'win32', undefined).path, undefined, 'the installed build needs no path');
+  assert.strictEqual(systemIntegration.loginItemOptions(true, 'darwin', 'ignored').args, undefined, 'macOS says it with openAsHidden');
+
+  /* Whether this start was the login item's. macOS answers; Windows reads the argument. */
+  const realPlatform = process.platform;
+  const realItem = fakeElectron.app.getLoginItemSettings;
+  fakeElectron.app.getLoginItemSettings = () => ({ wasOpenedAtLogin: true });
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  try {
+    assert.strictEqual(systemIntegration.startedAtLogin(), true, 'a login start is a login start');
+    fakeElectron.app.getLoginItemSettings = () => ({ wasOpenedAtLogin: false });
+    assert.strictEqual(systemIntegration.startedAtLogin(), false, 'and a person\'s is not');
+  } finally {
+    Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+    if (realItem) fakeElectron.app.getLoginItemSettings = realItem;
+    else delete fakeElectron.app.getLoginItemSettings;
+  }
+  Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  try {
+    process.argv.push(systemIntegration.HIDDEN_ARG);
+    assert.strictEqual(systemIntegration.startedAtLogin(), true, 'on Windows the argument is the answer');
+    process.argv.pop();
+    assert.strictEqual(systemIntegration.startedAtLogin(), false, 'and without it, the user asked for the window');
+  } finally {
+    Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+  }
 
   /* The microphone: only "denied" and "restricted" mean the system will refuse the
    * capture. Windows reports "unknown" before anything has been asked, and reading that
@@ -1932,6 +2009,24 @@ test('the shortcut the system is given starts a recording', async () => {
   assert.ok(await settle(() => state.phase === 'starting'), 'with a key it starts listening');
   assert.ok(windowCalls.indexOf('overlay:start') !== -1, 'and the overlay is told to start');
   assert.strictEqual(state.lastErrorKey, '');
+});
+
+test('the keys are handed back to the user while they are choosing one', () => {
+  /* Windows gives a registered combination to its owner before any window sees it, so a
+   * field waiting for keys received none — "I press keys and nothing happens". */
+  const shortcuts = require('../src/main/shortcuts.js');
+  fakeElectron.globalShortcut.suspended = false;
+  assert.deepStrictEqual(shortcuts.suspendCapture(true), { ok: true, suspended: true });
+  assert.strictEqual(fakeElectron.globalShortcut.suspended, true, 'the system is told to stop handing them here');
+  assert.deepStrictEqual(shortcuts.suspendCapture(false), { ok: true, suspended: false });
+  assert.strictEqual(fakeElectron.globalShortcut.suspended, false);
+
+  /* Wayland hands shortcuts out through the desktop's portal: there is nothing of ours to
+   * suspend, and the honest answer says so rather than pretending it did. */
+  assert.strictEqual(shortcuts.canSuspendCapture('linux', true), false, 'a Wayland session cannot');
+  assert.strictEqual(shortcuts.canSuspendCapture('linux', false), true, 'an X11 one can');
+  assert.strictEqual(shortcuts.canSuspendCapture('win32', false), true, 'and so can Windows, where it matters most');
+  assert.strictEqual(shortcuts.canSuspendCapture('darwin', false), true);
 });
 
 test('Escape is held while the app is busy and never before', () => {

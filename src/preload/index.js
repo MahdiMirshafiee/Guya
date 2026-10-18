@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('guya', {
   copyToClipboard: (text) => ipcRenderer.invoke('clipboard:copy', text),
   openPrivacySettings: (kind) => ipcRenderer.invoke('system:open-privacy', kind),
   quit: () => ipcRenderer.invoke('app:quit'),
+  suspendShortcutCapture: (suspended) => ipcRenderer.invoke('shortcut:suspend-capture', suspended),
+  retryShortcut: () => ipcRenderer.invoke('shortcut:retry'),
   accessibilityStatus: () => ipcRenderer.invoke('permissions:accessibility'),
   pasteSupport: () => ipcRenderer.invoke('permissions:paste'),
   requestAccessibility: () => ipcRenderer.invoke('permissions:request-accessibility'),

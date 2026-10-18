@@ -27,15 +27,56 @@ function loginItemRefusal(platform, packaged) {
   return null;
 }
 
+/* The argument the login item is registered with, so the app can tell "a person started
+ * me" from "the system started me at login" — on Windows there is no other way to know,
+ * and the difference decides whether a window opens. */
+const HIDDEN_ARG = '--hidden';
+
+/* Pure: what the system is told when the login item is set. The argument is how the app
+ * tells "a person started me" from "the system started me at login" on Windows, and on a
+ * portable build the path is the launcher the user actually has rather than the copy the
+ * launcher deletes on exit. */
+function loginItemOptions(openAtLogin, platform, portablePath) {
+  const options = { openAtLogin: !!openAtLogin, openAsHidden: true };
+  if (platform === 'win32') {
+    options.args = [HIDDEN_ARG];
+    if (portablePath) options.path = portablePath;
+  }
+  return options;
+}
+
 function loginItem(openAtLogin) {
   const refusal = loginItemRefusal(process.platform, app.isPackaged);
   if (refusal) return { ok: false, errorKey: refusal };
   try {
-    app.setLoginItemSettings({ openAtLogin: !!openAtLogin, openAsHidden: true });
+    app.setLoginItemSettings(loginItemOptions(openAtLogin, process.platform, process.env.PORTABLE_EXECUTABLE_FILE));
     return { ok: true };
   } catch (err) {
     return { ok: false, errorKey: 'error.unexpected' };
   }
+}
+
+/* Whether this start was the login item's doing rather than the user's. macOS answers it
+ * directly; on Windows the answer is the argument the item was registered with. */
+function startedAtLogin() {
+  if (process.platform === 'darwin') {
+    try {
+      return app.getLoginItemSettings().wasOpenedAtLogin === true;
+    } catch (_) {
+      return false;
+    }
+  }
+  return process.argv.indexOf(HIDDEN_ARG) !== -1;
+}
+
+/* One address the app may open, and only this one: the page that hands out the API key
+ * the window tells the user to get. A general "open this URL" door in the renderer is a
+ * door for anything that ever gets into the renderer. */
+const AI_STUDIO_URL = 'https://aistudio.google.com/apikey';
+
+function openExternal(what) {
+  if (what !== 'aistudio') return Promise.resolve({ ok: false });
+  return shell.openExternal(AI_STUDIO_URL);
 }
 
 /* Typing into another app is a keystroke through the OS, and each system exposes
@@ -220,4 +261,4 @@ function openPrivacySettings(kind) {
   return Promise.resolve();
 }
 
-module.exports = { copy, pasteIntoActiveApp, pasteSupport, choosePasteTool, pasteFailureKey, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemRefusal };
+module.exports = { copy, pasteIntoActiveApp, pasteSupport, choosePasteTool, pasteFailureKey, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemRefusal, loginItemOptions, startedAtLogin, openExternal, HIDDEN_ARG };

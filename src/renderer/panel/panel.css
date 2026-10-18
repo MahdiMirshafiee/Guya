@@ -325,6 +325,12 @@ body[data-phase='transcribing'] .timer {
   opacity: 1;
 }
 
+/* Something is true that the user needs to act on, but the app still works: the
+ * shortcut the system is not holding is the case this exists for. */
+.status-line.is-warn {
+  color: var(--warn);
+}
+
 .status-line.is-error {
   color: var(--err);
 }

@@ -10,11 +10,13 @@
   'use strict';
 
   var IS_MAC = typeof navigator !== 'undefined' ? /Mac/i.test(navigator.platform) : process.platform === 'darwin';
+  var IS_WINDOWS = typeof navigator !== 'undefined' ? /Win/i.test(navigator.platform) : process.platform === 'win32';
 
   /* Renderers that already know the real platform (via the preload bridge) can
    * pin it, so display() never depends on navigator.platform. */
   function setPlatform(platform) {
     IS_MAC = platform === 'darwin';
+    IS_WINDOWS = platform === 'win32';
   }
 
   /* Named keys are resolved from event.code, which is keyboard-layout
@@ -82,8 +84,13 @@
     PageDown: 'PageDown'
   };
 
-  /* Accelerators that would break the OS or the app if grabbed globally. */
-  var RESERVED = [
+  /* Combinations the system owns, per platform. These are refused while the user is
+   * pressing keys, because the alternative is what happened on Windows: the form accepted
+   * `Alt+Space`, the store kept it, the registration failed, and the app then held no
+   * shortcut at all while the field showed one. The OS will not hand these out —
+   * `RegisterHotKey` returns false for the Alt and Win combinations below, and an X11
+   * window manager grabs its own — so they are answered where the user is looking. */
+  var RESERVED_MAC = [
     'CommandOrControl+Q',
     'CommandOrControl+W',
     'Command+Tab',
@@ -91,6 +98,36 @@
     'CommandOrControl+Control+Q',
     'Alt+F4'
   ];
+  var RESERVED_WINDOWS = [
+    'Alt+Tab',
+    'Alt+Space', // the window menu
+    'Alt+Escape',
+    'Alt+F4',
+    'Control+Escape',
+    'Control+Shift+Escape',
+    'Control+Alt+Delete',
+    'Super+Tab',
+    'Super+Space',
+    'Super+D',
+    'Super+E',
+    'Super+L',
+    'Super+R'
+  ];
+  var RESERVED_LINUX = [
+    'Alt+Tab',
+    'Alt+Space',
+    'Alt+F4',
+    'Control+Alt+Delete',
+    'Super+Tab',
+    'Super+Space',
+    'Super+D',
+    'Super+L'
+  ];
+
+  function reservedList() {
+    if (IS_MAC) return RESERVED_MAC;
+    return IS_WINDOWS ? RESERVED_WINDOWS : RESERVED_LINUX;
+  }
 
   function keyFromEvent(event) {
     var code = event.code || '';
@@ -129,7 +166,7 @@
 
     parts.push(key);
     var accelerator = parts.join('+');
-    if (RESERVED.indexOf(accelerator) !== -1) {
+    if (reservedList().indexOf(accelerator) !== -1) {
       return { errorKey: 'ui.shortcutReserved' };
     }
     return { accelerator: accelerator };

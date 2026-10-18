@@ -18,6 +18,10 @@ const state = {
   phase: 'idle', // idle | starting | recording | transcribing | done | error
   lastTranscript: '',
   shortcutErrorKey: '',
+  /* Whether the system is actually holding the shortcut right now — which is not the same
+   * as a value being in the settings file, and the difference is what a Windows user saw
+   * as "the shortcut does nothing". */
+  shortcutHeld: false,
   lastErrorKey: '',
   lastErrorVars: null,
   startedAt: 0, // ms, set when the microphone goes live
@@ -52,6 +56,7 @@ function publicState() {
     shortcut: settings.shortcut,
     shortcutDisplay: accelerator.display(settings.shortcut),
     shortcutErrorKey: state.shortcutErrorKey,
+    shortcutHeld: state.shortcutHeld,
     startedAt: state.startedAt,
     lastDurationMs: state.lastDurationMs,
     silenceStopMs: settings.silenceStopMs,

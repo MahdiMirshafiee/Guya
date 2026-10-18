@@ -64,7 +64,47 @@ function registerShortcut(next) {
 function applyShortcut(next) {
   const result = registerShortcut(next);
   state.shortcutErrorKey = result.ok ? '' : result.errorKey;
+  state.shortcutHeld = result.ok;
   return result;
+}
+
+/* The key the app is holding is not the user's to press while they are choosing a new one:
+ * Windows hands the combination to whoever registered it before the window ever sees the
+ * keystroke, so a field waiting for keys receives none — which is what "I press keys and
+ * nothing happens" was. Electron has this exact switch for this exact screen.
+ *
+ * A Wayland session cannot suspend anything (the grab is the desktop's), and there the
+ * capture is left as it was. */
+/* Pure, so the one platform where this cannot work can be tested from the others. */
+function canSuspendCapture(platform, wayland) {
+  return !(platform === 'linux' && wayland);
+}
+
+function suspendCapture(suspended) {
+  const wayland = !!(process.env.XDG_SESSION_TYPE === 'wayland' || process.env.WAYLAND_DISPLAY);
+  if (!canSuspendCapture(process.platform, wayland)) return { ok: true, suspended: false };
+  try {
+    globalShortcut.setSuspended(!!suspended);
+    return { ok: true, suspended: !!suspended };
+  } catch (err) {
+    console.warn('[guya] could not suspend the shortcut while choosing one:', err && err.message);
+    return { ok: false };
+  }
+}
+
+/* Asked again when the window is opened: the combination may have been taken by another
+ * app for a while and given back, and there is nothing else the user can press. */
+function retry() {
+  const wanted = store.read().shortcut;
+  if (!wanted || active === wanted) {
+    state.shortcutHeld = !wanted ? false : true;
+    return { ok: true, held: !!wanted && active === wanted };
+  }
+  const result = registerShortcut(wanted);
+  state.shortcutErrorKey = result.ok ? '' : result.errorKey;
+  state.shortcutHeld = result.ok;
+  if (!result.ok && process.env.GUYA_DEBUG) console.log('[guya] the shortcut is still unavailable:', wanted, result.errorKey);
+  return { ok: result.ok, held: result.ok, errorKey: result.errorKey };
 }
 
 /* Escape belongs to whatever app the user is in, except while this app is doing
@@ -106,4 +146,4 @@ onPhaseChange((phase) => {
   }
 });
 
-module.exports = { registerShortcut, applyShortcut };
+module.exports = { registerShortcut, applyShortcut, suspendCapture, canSuspendCapture, retry };

@@ -83,6 +83,18 @@
               </button>
             </div>
           </div>
+          <!-- Where a key comes from, in three lines, where the field that wants one is.
+               Closed by default: the app is not a tutorial, and this is read once. -->
+          <details class="howto" id="keyHelp">
+            <summary data-i18n="ui.keyHelpSummary"></summary>
+            <ol class="howto-steps">
+              <li data-i18n="ui.keyHelpStep1"></li>
+              <li data-i18n="ui.keyHelpStep2"></li>
+              <li data-i18n="ui.keyHelpStep3"></li>
+            </ol>
+            <button id="openKeyPage" class="btn-quiet" type="button" data-i18n="ui.keyHelpOpen"></button>
+          </details>
+
           <div class="row">
             <span class="row-label" data-i18n="ui.model"></span>
             <div class="row-control">
@@ -98,12 +110,15 @@
 
         <h2 class="section-title" data-i18n="ui.recording"></h2>
         <div class="group">
-          <div class="row">
+          <!-- The whole row takes the press, not just the key caps: the caps are a few
+               characters wide, and clicking beside them did nothing at all. -->
+          <div class="row is-clickable" id="shortcutRow">
             <span class="row-label" data-i18n="ui.shortcut"></span>
             <div class="row-control">
-              <div id="shortcut" class="keys" tabindex="0" role="button"></div>
+              <div id="shortcut" class="keys" tabindex="0" role="button" aria-describedby="shortcutHint"></div>
             </div>
           </div>
+          <p class="row-hint" id="shortcutHint" role="status" aria-live="polite" hidden></p>
           <div class="row">
             <span class="row-label" data-i18n="ui.spokenLanguage"></span>
             <div class="row-control">

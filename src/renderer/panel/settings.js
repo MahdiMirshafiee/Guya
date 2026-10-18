@@ -18,6 +18,9 @@ const F = {
   prompt: document.getElementById('prompt'),
   resetPrompt: document.getElementById('resetPrompt'),
   shortcut: document.getElementById('shortcut'),
+  shortcutRow: document.getElementById('shortcutRow'),
+  openKeyPage: document.getElementById('openKeyPage'),
+  shortcutHint: document.getElementById('shortcutHint'),
   silenceStop: document.getElementById('silenceStop'),
   silenceCustom: document.getElementById('silenceCustom'),
   silenceUnit: document.getElementById('silenceUnit'),
@@ -254,6 +257,7 @@ function repaintSettings() {
   renderLanguages();
   renderModels();
   renderShortcut();
+  renderShortcutNotice();
   renderSettingsStatus();
 }
 
@@ -384,17 +388,42 @@ async function refreshModels() {
 
 /* ------------------------------------------------------------- shortcuts --- */
 
+/* What the row says while the user is choosing, and what it says about the combination
+ * the app is actually holding. The sentence used to go to the form's status line, which is
+ * the last element of a scrolling form — off the screen on a laptop — so a refused
+ * combination looked exactly like nothing happening. */
+function setShortcutHint(key) {
+  F.shortcutHint.hidden = !key;
+  F.shortcutHint.textContent = key ? t(key) : '';
+  if (key) F.shortcutHint.scrollIntoView({ block: 'nearest' });
+}
+
+function renderShortcutNotice() {
+  if (capturingShortcut) return;
+  /* The settings file can hold a combination the system is not holding — the key was taken
+   * at launch, or something grabbed it since. Saying so here is the difference between "the
+   * shortcut does nothing" and knowing why. */
+  setShortcutHint(settings.shortcut && appState.shortcutHeld === false ? 'ui.shortcutNotHeld' : '');
+}
+
 function beginShortcutCapture() {
   if (capturingShortcut) return;
   capturingShortcut = true;
   F.shortcut.classList.add('capturing');
+  setShortcutHint('');
+  /* Stop the system handing this app the keys it already holds: otherwise the user presses
+   * the combination they can see, the app consumes it, and the field never hears a thing. */
+  if (api.suspendShortcutCapture) api.suspendShortcutCapture(true).catch(() => {});
   renderShortcut();
 }
 
 function endShortcutCapture() {
+  if (!capturingShortcut) return;
   capturingShortcut = false;
   F.shortcut.classList.remove('capturing');
+  if (api.suspendShortcutCapture) api.suspendShortcutCapture(false).catch(() => {});
   renderShortcut();
+  renderShortcutNotice();
 }
 
 function onShortcutKeyDown(event) {
@@ -414,11 +443,21 @@ function onShortcutKeyDown(event) {
 
   const result = GuyaAccelerator.fromKeyboardEvent(event);
   if (result.errorKey) {
+    /* Beside the field the user is looking at, and the status line as well: one is where
+     * their eyes are, the other is where the rest of the form's messages live. */
+    setShortcutHint(result.errorKey);
     setFormStatus(result.errorKey, 'warn');
     return;
   }
   if (result.accelerator) {
+    if (result.accelerator === settings.shortcut) {
+      /* The combination already in force: say so instead of the screen not changing. */
+      setShortcutHint('ui.shortcutSame');
+      endShortcutCapture();
+      return;
+    }
     shortcutDraft = result.accelerator;
+    setShortcutHint('');
     endShortcutCapture();
     saveAndRepaint({ shortcut: result.accelerator });
   }
@@ -524,11 +563,14 @@ function initSettings() {
     saveAndRepaint({ model: F.modelSelect.value });
   });
 
+  on(F.shortcutRow, 'click', beginShortcutCapture);
   on(F.shortcut, 'focus', beginShortcutCapture);
-  on(F.shortcut, 'click', beginShortcutCapture);
   on(F.shortcut, 'blur', endShortcutCapture);
   on(F.shortcut, 'keydown', onShortcutKeyDown);
   on(F.refreshModels, 'click', refreshModels);
+  on(F.openKeyPage, 'click', () => {
+    if (api.openExternal) api.openExternal('aistudio');
+  });
 
   on(F.pasteAfterTranscribe, 'change', async () => {
     try {
@@ -573,6 +615,10 @@ function initSettings() {
 
 /* Called by the shell every time the settings screen is opened. */
 window.__refreshSettings = async function refreshSettings() {
+  /* Opening this screen is the moment to ask the system for the shortcut again: the
+   * combination may have been taken when the app started and given back since, and this is
+   * where the answer is shown. The main process pushes the new state, which repaints. */
+  if (api.retryShortcut) api.retryShortcut().catch(() => {});
   try {
     applyPasteSupport(await api.pasteSupport());
     if (!pasteSupport.supported) {
@@ -604,6 +650,7 @@ window.__refreshSettings = async function refreshSettings() {
 initSettings();
 window.__repaintSettings = repaintSettings;
 window.__renderFormStatus = renderSettingsStatus;
+window.__renderShortcutNotice = renderShortcutNotice;
 
 /* The shell's own paint is one of the two ways this form is drawn, and it may have
  * already happened — the shell awaits the settings, and that answer can arrive before

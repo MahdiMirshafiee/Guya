@@ -33,6 +33,15 @@ const shortcutApi = require('./shortcuts');
 const systemIntegration = require('./system');
 const ipc = require('./ipc');
 
+/* The window, and the shortcut. Asked for together because the second launch of the app is
+ * how the window is brought back — and because a key that was taken when the app started is
+ * worth asking for again by then. */
+function showWindow() {
+  shortcutApi.retry();
+  state_.pushPanel();
+  windows.showPanel();
+}
+
 function start() {
   /* Windows identifies an app by this string, not by its name: without it the installed
    * build takes its identity from the shortcut the installer made and the portable one
@@ -54,14 +63,23 @@ function start() {
     else windows.getOverlay(); // nothing was recording: just rebuild it quietly
   });
 
-  windows.getOverlay(); // preload the overlay renderer so the first hotkey feels instant
+  /* The window the user is waiting for comes first. The overlay is still built at startup,
+   * because the first press has to find its orb already there, but a second renderer process
+   * ahead of the panel is a second renderer process's worth of waiting on Windows. */
   windows.getPanel();
   ipc.register();
+  windows.getOverlay();
 
   const shortcut = store.read().shortcut;
   const applied = shortcutApi.registerShortcut(shortcut);
   state_.state.shortcutErrorKey = applied.ok ? '' : applied.errorKey;
-  if (!applied.ok) console.warn('[guya] shortcut unavailable:', shortcut);
+  state_.state.shortcutHeld = applied.ok;
+  if (!applied.ok) {
+    /* Not fatal and not silent: the value stays in the settings file — the user chose it,
+     * and another app may give the combination back — and the window says it is not
+     * holding it. Asked again every time the window is opened. */
+    console.warn('[guya] the shortcut is not available on this system:', shortcut, applied.errorKey);
+  }
 
   if (store.read().launchAtLogin) systemIntegration.loginItem(true);
 
@@ -70,16 +88,20 @@ function start() {
   }
 
   state_.pushPanel();
-  if (!store.read().apiKey) windows.showPanel();
+  /* A person who launched the app is asking for its window; the login item is not. Without
+   * this, a configured install opened nothing at all — and on Windows and Linux, which have
+   * no Dock and no menu, the first click appeared to do nothing: that process finds the
+   * single-instance lock taken, quits, and only the *next* click shows the window. */
+  if (!store.read().apiKey || !systemIntegration.startedAtLogin()) windows.showPanel();
 }
 
 /* One instance: a second launch is a request to show the window. */
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => windows.showPanel());
+  app.on('second-instance', showWindow);
   app.whenReady().then(start);
-  app.on('activate', () => windows.showPanel());
+  app.on('activate', showWindow);
 
   /* Nothing quits the app by emptying the screen, on any platform. The shortcut is the
    * product; a window that is closed (or a renderer that dies) must not take it away.

@@ -113,8 +113,11 @@ function warm() {
   }
 }
 
-/* Models that exist but cannot take an audio clip, or cannot answer with text. */
-const NOT_FOR_TRANSCRIPTION = /(tts|image|imagen|veo|embedding|aqa|gemma|live|native-audio|robotics|computer-use|learnlm|lyria)/i;
+/* Models that exist but cannot take an audio clip, or cannot answer with text. The list
+ * grows with the provider's catalogue, and the picker is only as useful as it is: an image
+ * model beside a transcription model is a setting someone will choose by mistake and then
+ * read as the app being broken. */
+const NOT_FOR_TRANSCRIPTION = /(tts|image|imagen|veo|embedding|aqa|gemma|live|native-audio|robotics|computer-use|learnlm|lyria|banana|antigravity|deep-research)/i;
 
 async function listModels(apiKey, uiLanguage) {
   if (!apiKey) return { ok: false, errorKey: 'error.noKey' };

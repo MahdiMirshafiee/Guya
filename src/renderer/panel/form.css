@@ -56,6 +56,26 @@
   font-weight: 500;
 }
 
+/* A row whose whole width starts something is a control, so it says so with the pointer
+ * and answers the hover, instead of only the few characters of the key caps. */
+.row.is-clickable {
+  cursor: pointer;
+}
+
+.row.is-clickable:hover .keys kbd.key {
+  border-color: color-mix(in srgb, var(--text-1) 24%, transparent);
+}
+
+/* What the row has to say, on its own line under it: a refused combination, or the fact
+ * that the system is not holding the one in the file. Quiet, because it is an answer to
+ * something the user just did rather than a state of the app. */
+.row-hint {
+  margin: var(--s1) var(--s4) var(--s2);
+  font-size: var(--text-caption);
+  line-height: 1.4;
+  color: var(--warn);
+}
+
 .row-control {
   flex: 1 1 auto;
   display: flex;
@@ -84,6 +104,60 @@
   font-size: var(--text-caption);
   line-height: 1.45;
   color: var(--text-3);
+}
+
+/* ------------------------------------------------------------ how to ----- */
+
+/* Three lines about where a key comes from, under the field that wants one. Closed until
+ * asked: the app is not a tutorial, and this is read once. Same caption role as a
+ * footnote, on the material, with the disclosure marker quiet. */
+.howto {
+  margin: var(--s2) var(--s4) 0;
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--text-3);
+}
+
+.howto > summary {
+  cursor: pointer;
+  color: var(--accent);
+  list-style: none;
+}
+
+.howto > summary::-webkit-details-marker {
+  display: none;
+}
+
+.howto > summary::after {
+  content: '›';
+  display: inline-block;
+  margin-inline-start: var(--s1);
+  transition: transform var(--motion);
+}
+
+.howto[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.howto-steps {
+  margin: var(--s2) 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.howto-steps li {
+  counter-increment: step;
+  margin-block-start: var(--s1);
+}
+
+.howto-steps li::before {
+  content: counter(step) '. ';
+  color: var(--text-3);
+}
+
+.howto .btn-quiet {
+  margin-block-start: var(--s2);
 }
 
 /* ------------------------------------------------------- labelled field --- */

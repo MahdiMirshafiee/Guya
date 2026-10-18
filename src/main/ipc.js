@@ -113,6 +113,19 @@ function register() {
     }
   });
 
+  /* While the user is choosing a shortcut, the system must stop handing the keys to this
+   * app: Windows gives a registered combination to its owner before any window sees it, so
+   * the field received nothing at all. */
+  ipcMain.handle('shortcut:suspend-capture', (_event, suspended) => shortcutApi.suspendCapture(suspended));
+
+  /* The app may have been started with the combination held by something else, and there
+   * is nothing the user can press to find out that it is free again. */
+  ipcMain.handle('shortcut:retry', () => {
+    const result = shortcutApi.retry();
+    state_.pushPanel();
+    return result;
+  });
+
   /* The window's close button hides the window on every platform, so that the
    * shortcut survives it — which leaves the settings screen as the only way out on
    * Windows and Linux, where there is no menu bar to quit from. */

@@ -41,7 +41,7 @@ Download the file for your system from [Releases](../../releases/latest):
 | macOS (Intel) | `Guya-<version>-macOS-x64.dmg` | Intel Macs |
 | Windows (x64) | `Guya-<version>-Windows-x64-Setup.exe` | Installer |
 | Windows (arm64) | `Guya-<version>-Windows-arm64-Setup.exe` | Installer |
-| Windows, without installing | `Guya-<version>-Windows-x64-Portable.exe` | Also `-arm64-Portable` |
+| Windows, without installing | `Guya-<version>-Windows-x64-Portable.exe` | Also `-arm64-Portable`; unpacks itself into a temporary folder on every launch, so it starts more slowly than the installer |
 | Linux (x64) | `Guya-<version>-Linux-x86_64.AppImage` | Portable; `chmod +x` and run |
 | Linux (x64, Debian) | `Guya-<version>-Linux-amd64.deb` | `sudo apt install ./Guya-...deb` |
 | Linux (arm64) | `Guya-<version>-Linux-arm64.AppImage` | Portable; also `-arm64.deb` |
@@ -63,7 +63,9 @@ The builds are **not code-signed**, so the system will warn the first time:
 
 ## First run
 
-The settings screen opens when there is no key yet.
+The settings screen opens when there is no key yet, and the field it wants has a
+three-line answer under it — *Where do I get an API key?* — with a button that opens
+<https://aistudio.google.com/apikey>.
 
 1. Paste a Gemini API key from <https://aistudio.google.com/apikey>.
 2. Press **Refresh models** and pick one. `gemini-2.5-flash` is a good default;
@@ -117,7 +119,8 @@ the app no menu bar.
 | Setting | What it does |
 | --- | --- |
 | API key | Your Gemini key, stored encrypted on this machine |
-| Model | Read from the API with *Refresh models*; can also be typed |
+| Model | The four this app is built against, or the whole list from *Refresh models*; can also be typed |
+| Where do I get an API key? | Under the key field: three steps and a button that opens Google AI Studio |
 | Spoken language | Auto-detect, or one language for more accuracy |
 | Stop after silence | Off, or 1–120 seconds (3 by default) |
 | Stop if nobody speaks | Off, or 1–120 seconds (8 by default) |
@@ -136,7 +139,7 @@ the app no menu bar.
 | "No Gemini API key yet." | Add one in the settings screen. |
 | "Quota reached. Try again in about N seconds." | The provider's rate limit. The app tells you the wait it was given instead of retrying into it. |
 | "This model is not available for your key." | The model was removed or is not enabled for that key: press *Refresh models* and pick another. |
-| The shortcut does nothing | Another app already owns that combination. The settings screen says so, keeps the previous shortcut, and lets you record a different one. |
+| The shortcut does nothing | Another app already owns that combination. The recorder says the app is not holding it, the settings row says the same, and choosing another one takes one press — while you are choosing, the app hands the keys back so the field can hear them. |
 | Paste automatically does nothing | macOS has two permissions for this and the app offers the pane it actually needs: **Accessibility** to send keystrokes, and — the first time — **Automation**, to let Guya drive System Events. If the transcript is on screen in Guya's own window, nothing is typed: there is nowhere sensible to type it. |
 | The transcript is empty but I spoke | The recording was quiet enough that the model heard nothing. *Stop after silence* and the input level in the recorder are the things to check. |
 

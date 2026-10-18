@@ -192,6 +192,12 @@ function statusCopy() {
     };
   }
   if (!settings.apiKey) return { text: t('error.noKey'), kind: '' };
+  /* Saying this here matters more than anywhere else: the shortcut is how the app is used,
+   * and a combination the system is not holding fails silently — the user presses it, and
+   * nothing happens, on the screen that exists to say what is true right now. */
+  if (settings.shortcut && appState.shortcutHeld === false) {
+    return { text: t(appState.shortcutErrorKey || 'ui.shortcutNotHeld'), kind: 'warn' };
+  }
   if (!appState.lastTranscript) return { text: t('ui.tapToRecord'), kind: '' };
   return null;
 }
@@ -230,7 +236,11 @@ function renderRecorder() {
 
   const status = statusCopy();
   R.status.textContent = status ? status.text : '';
-  R.status.className = 'status-line' + (status && status.text ? ' is-shown' : '') + (status && status.kind === 'error' ? ' is-error' : '');
+  R.status.className =
+    'status-line' +
+    (status && status.text ? ' is-shown' : '') +
+    (status && status.kind === 'error' ? ' is-error' : '') +
+    (status && status.kind === 'warn' ? ' is-warn' : '');
 
   const recording = phase === 'recording';
   /* While the answer is being fetched the same control cancels it: the wait is the
@@ -332,6 +342,7 @@ function onState(state) {
   applyAccent();
   renderRecorder();
   if (window.__renderFormStatus) window.__renderFormStatus();
+  if (window.__renderShortcutNotice) window.__renderShortcutNotice();
 }
 
 /* ------------------------------------------------------------------ wire --- */

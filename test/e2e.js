@@ -207,6 +207,12 @@ class Cdp {
   await waitFor(async () => await panel.eval(`!!appState.phase && document.querySelector('.nav-title').textContent.length > 0`), 10000, 'the panel to boot');
 
   console.log('\n1. idle');
+  /* A person who launched the app asked for its window, and the profile has a key already:
+   * the window used to stay hidden, which on Windows and Linux (no Dock, no menu) meant the
+   * first click did nothing visible at all. */
+  await waitFor(async () => (await panel.eval('document.visibilityState')) === 'visible', 4000, 'the window to be shown').catch(() => null);
+  const visibility = await panel.eval('document.visibilityState');
+  check('a configured launch shows its window', visibility === 'visible', visibility);
   check('two views, recorder first', (await panel.eval('document.body.dataset.view')) === 'recorder');
   check('the header names the app', APP_TITLES.indexOf(await panel.eval(`document.querySelector('.nav-title').textContent`)) !== -1,
     await panel.eval(`document.querySelector('.nav-title').textContent`));
@@ -477,7 +483,12 @@ class Cdp {
    * seeding it once as this form's script ran meant it seeded an empty object — the two
    * models the footnote recommends could only be had by typing them. */
   const modelOptions = await panel.eval(`Array.from(document.getElementById('modelSelect').options).map((o) => o.value)`);
-  check('and offers the curated models, not just the current one', modelOptions.indexOf('gemini-2.5-flash-lite') !== -1 && modelOptions.length >= 4, modelOptions.join(', '));
+  const wantedModels = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+  check(
+    'and offers the default models, newest first',
+    wantedModels.every((id) => modelOptions.indexOf(id) !== -1) && modelOptions.length >= 5,
+    modelOptions.join(', ')
+  );
   check('the spoken-language picker is populated', (await panel.eval(`document.getElementById('language').options.length`)) > 5);
   check('the silence stop offers real choices', (await panel.eval(`document.getElementById('silenceStop').options.length`)) >= 4);
   check('stopping when nobody speaks is a setting of its own', (await panel.eval(`document.getElementById('noSpeechStop').options.length`)) >= 4);
@@ -588,6 +599,58 @@ class Cdp {
   await sleep(500);
 
   check('the shortcut is drawn as key caps', (await panel.eval(`document.querySelectorAll('#shortcut kbd').length`)) >= 2);
+
+  /* Where a key comes from, in the window that asks for one: three steps and a way to the
+   * page, closed until asked for. */
+  const howto = await panel.eval(`(() => {
+    const box = document.getElementById('keyHelp');
+    return {
+      closed: !box.open,
+      summary: box.querySelector('summary').textContent.trim(),
+      steps: box.querySelectorAll('li').length,
+      button: document.getElementById('openKeyPage').textContent.trim(),
+      afterKeyField: box.previousElementSibling.contains(document.getElementById('apiKey'))
+    };
+  })()`);
+  check('the window says where a key comes from', howto.closed && howto.summary === i18n.t('fa', 'ui.keyHelpSummary'), JSON.stringify(howto));
+  check('in three steps, next to the field that wants one', howto.steps === 3 && howto.afterKeyField && howto.button.length > 0, JSON.stringify(howto));
+
+  /* A refused combination answers beside the field. The sentence used to go to the form's
+   * status line — the last element of a scrolling form — so pressing keys looked like
+   * nothing happening, which is exactly what a Windows user reported. */
+  await panel.eval(`document.getElementById('shortcutRow').click()`);
+  await sleep(200);
+  check('the row starts a capture wherever it is clicked', (await panel.eval(`document.getElementById('shortcut').classList.contains('capturing')`)) === true);
+  await panel.eval(`(() => {
+    document.getElementById('shortcut').dispatchEvent(new KeyboardEvent('keydown', { key: 'q', code: 'KeyQ', metaKey: true, bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  await sleep(300);
+  const refused = await panel.eval(`(() => {
+    const hint = document.getElementById('shortcutHint');
+    const box = hint.getBoundingClientRect();
+    return { hidden: hint.hidden, text: hint.textContent.trim(), onScreen: box.top >= 0 && box.bottom <= window.innerHeight };
+  })()`);
+  check('a refused combination says so where the user is looking', !refused.hidden && refused.onScreen && refused.text === i18n.t('fa', 'ui.shortcutReserved'), JSON.stringify(refused));
+  await panel.eval(`(() => {
+    document.getElementById('shortcut').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+    return true;
+  })()`);
+  await sleep(200);
+  check('and Escape leaves the field as it was', (await panel.eval(`document.getElementById('shortcut').classList.contains('capturing')`)) === false);
+
+  /* The recorder is the screen the user is on when the shortcut fails: it says so there. */
+  const notHeld = await panel.eval(`(async () => {
+    const before = appState.shortcutHeld;
+    appState = Object.assign({}, appState, { shortcutHeld: false, shortcutErrorKey: '' });
+    renderRecorder();
+    const text = document.getElementById('status').textContent.trim();
+    const kind = document.getElementById('status').className;
+    appState = Object.assign({}, appState, { shortcutHeld: before });
+    renderRecorder();
+    return { text, kind };
+  })()`);
+  check('and the recorder says when the shortcut is not held', notHeld.text === i18n.t('fa', 'ui.shortcutNotHeld') && /is-warn/.test(notHeld.kind), JSON.stringify(notHeld));
   check('every group has a title and most have a footnote', (await panel.eval(`document.querySelectorAll('.section-title').length`)) >= 4 && (await panel.eval(`document.querySelectorAll('.footnote').length`)) >= 3);
   check('no wake-word setting exists any more', (await panel.eval(`document.querySelectorAll('#wakeEnabled,#wakeWord').length`)) === 0);
 

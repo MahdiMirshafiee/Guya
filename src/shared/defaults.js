@@ -6,8 +6,10 @@ const { DEFAULT_PROMPT } = require('./prompt');
 /* Keyboard shortcut: one press starts recording, the same one stops it. */
 const DEFAULT_SHORTCUT = 'CommandOrControl+Shift+Space';
 
-/* Only used to pre-fill the model box; the real list comes from the API. */
-const KNOWN_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro'];
+/* What the picker offers before anything is asked of the API: the models this app is
+ * built and tested against, newest first. "Refresh models" replaces the list with what the
+ * user's own key can reach, and anything they type stays theirs. */
+const KNOWN_MODELS = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 
 const MAX_RECORDING_MS = 300000;
 
@@ -27,7 +29,7 @@ const ATTEMPT_CHOICES = [1, 2, 3, 5];
 
 const DEFAULTS = {
   apiKey: '',
-  model: 'gemini-2.5-flash',
+  model: 'gemini-3.1-flash-lite',
   language: 'auto',
   /* The field is seeded with the app's instructions by the store, which is the only
    * place that knows whether a file predates the field holding them. No
