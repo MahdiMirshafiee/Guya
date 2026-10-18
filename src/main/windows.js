@@ -185,7 +185,14 @@ function createOverlay() {
   // The overlay must never steal clicks from the app the user is speaking into.
   overlayWin.setIgnoreMouseEvents(true, { forward: true });
   overlayWin.setAlwaysOnTop(true, 'screen-saver');
-  overlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  /* The app is a regular macOS app — Dock icon, menu bar, Cmd+Q — and Electron's default
+   * for this call is to switch the process to "UI element", which takes all three away. The
+   * overlay is a `panel`-type window, so it keeps its place over full-screen apps through the
+   * collection behaviour alone. */
+  overlayWin.setVisibleOnAllWorkspaces(true, {
+    visibleOnFullScreen: true,
+    ...(IS_MAC ? { skipTransformProcessType: true } : {})
+  });
   if (IS_MAC && overlayWin.setWindowButtonVisibility) overlayWin.setWindowButtonVisibility(false);
 
   /* The page starts hidden (`show: false`), and it stays that way until somebody asks
