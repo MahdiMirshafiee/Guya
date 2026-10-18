@@ -140,11 +140,11 @@ It checks the tree is clean, runs the tests, regenerates the icon, bumps
    for, so nothing on the page needs a note explaining which download to pick.
 
 A version that shipped with something wrong with it is published again under the
-same tag: push the tag again and `scripts/publish-release.sh` re-cuts the release —
-the notes are rewritten from the commits as they are now, the new files replace the
-old ones, and a file the build no longer produces is removed, so the page never
-offers two downloads for one job. The script is the whole publish path and can be
-run by hand with `gh` on the PATH:
+same tag: move the tag, push it again, and the release for it is replaced — deleted and
+created again, so the notes are written from the commits as they are now and the page
+holds exactly the files this build made. Nothing from the previous publish can be left
+beside them, which is the only way a page cannot offer two downloads for one job. The
+script is the whole publish path and can be run by hand with `gh` on the PATH:
 
 ```bash
 GITHUB_REPOSITORY=owner/Guya scripts/publish-release.sh v1.0.0 notes.md dist/*.dmg dist/*.exe dist/*.AppImage dist/*.deb

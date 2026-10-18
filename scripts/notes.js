@@ -126,21 +126,24 @@ function render(commits, options) {
  * introduction rather than 76 commit subjects. */
 const FIRST_RELEASE = [
   '**Voice to text on your desktop, with your own Gemini key.** One shortcut records,',
-  'the audio goes straight to Google with your key, and the transcript is on your',
-  'clipboard — typed into whatever app has focus, if you ask for it. macOS, Windows',
-  'and Linux, in both arm64 and x64.',
+  'the audio goes straight to Google with your key, and the transcript lands on your',
+  'clipboard — typed into whatever app has focus, if you ask for it. macOS, Windows and',
+  'Linux, arm64 and x64.',
   '',
   '- **A real equalizer.** The window\'s meter and the floating orb are drawn from the',
   '  microphone: forty-eight bands measured in decibels against the noise floor of the',
-  '  room you are in, so noise reads as nothing and your voice moves it.',
-  '- **It stops on its own**, three seconds after your last word — and a recording where',
-  '  nobody spoke is refused without a request being sent at all.',
-  '- **Two languages end to end**, with each transcript laid out by its own language',
-  '  rather than the interface\'s.',
+  '  room you are in, so a fan reads as nothing and your voice moves it.',
+  '- **It stops on its own**, three seconds after your last word — and a recording nobody',
+  '  spoke into is refused without a request being sent at all.',
+  '- **A speaker who mixes languages gets each part back in its own.** Persian with an',
+  '  English term in the middle stays that way, in both scripts and in one sentence.',
   '- **No standing microphone.** No wake word, no always-on listening: the device opens',
   '  when a recording starts and closes when it stops.',
   '- **Nothing in the middle.** No account, no server of the app\'s own, no telemetry;',
-  '  the key is stored encrypted with the system\'s own keychain.'
+  '  the key is kept encrypted by the system — the keychain on macOS, DPAPI on Windows.',
+  '',
+  'The settings screen takes the key (with a link to where you get one), the model, the',
+  'two waits, the shortcut and the instructions sent to the model. Nothing else is asked.'
 ];
 
 /* Version order, not the order tags were made in: a tag can be cut after a later one
