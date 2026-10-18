@@ -63,13 +63,14 @@ The builds are **not code-signed**, so the system will warn the first time:
 
 ## First run
 
-The settings screen opens when there is no key yet. The key field carries *Get a key* on
-its own line, which opens <https://aistudio.google.com/apikey>, and the three steps are
-written under the group.
+The window opens when the app starts, and with no key yet the recorder says *No Gemini API
+key yet.* — the settings screen behind the gear is where the key goes. Its field carries
+*Get a key* on its own line, which opens <https://aistudio.google.com/apikey>, and the three
+steps are written under the group.
 
 1. Paste a Gemini API key from <https://aistudio.google.com/apikey>.
-2. Press **Refresh models** and pick one;
-   `flash-lite` is faster, `flash` is more accurate for Persian.
+2. Press **Refresh models** and pick one. `flash-lite` is faster, `flash` is more
+   accurate for Persian.
 3. Press **Test key** to check it before you rely on it.
 
 ## Using it
@@ -87,9 +88,9 @@ written under the group.
   does the silence timer.)
 - **The orb tells you which state you are in.** It is blue while the microphone is
   opening and turns warm the moment it is actually live — speak after that, not before.
-- **Everything is a setting.** The two waits, the model and the instructions sent to
-  the model, and both waits accept a value the picker does not list through *Custom…*;
-  the attempts per transcription and the spoken language are short closed lists.
+- **Everything is a setting.** Both waits, the model and the instructions sent to the
+  model are yours to change, and each wait takes a value the picker does not list through
+  *Custom…*. The attempts per transcription and the spoken language are short closed lists.
 - **A recording nobody spoke into is not a question.** The app says "no speech detected"
   and sends nothing — and if a reply ever comes back as a sentence *about* the request
   instead of the transcript, it is discarded rather than typed into your window.
@@ -118,17 +119,16 @@ the app no menu bar.
 
 | Setting | What it does |
 | --- | --- |
-| API key | Your Gemini key, stored encrypted on this machine |
+| API key | Your Gemini key, stored encrypted on this machine. *Get a key* on the field's own line opens Google AI Studio, and the three steps are written under the group |
 | Model | The four this app is built against, or the whole list from *Refresh models*; can also be typed |
-| Where do I get an API key? | *Get a key* on the key field's own line opens Google AI Studio, and the three steps are under the group |
 | Spoken language | Auto-detect, or one language for more accuracy |
 | Stop after silence | Off, or 1–120 seconds (3 by default) |
 | Stop if nobody speaks | Off, or 1–120 seconds (8 by default) |
 | Attempts | Tries per transcription, the first one included (3 by default) |
 | System prompt | The instructions sent with every recording; editable, and resettable |
 | Copy to clipboard | Copy the transcript when it arrives |
-| Paste automatically | Type it into the focused app (needs macOS Accessibility; on Windows it uses the system's own scripting) |
-| Launch at login | Start the app when you sign in (installed builds only) |
+| Paste automatically | Type it into the focused app. macOS needs Accessibility; Windows uses the system's own scripting; on Linux it needs `xdotool` (X11) or `ydotool`/`wtype` (Wayland) installed |
+| Launch at login | Start the app when you sign in — macOS and Windows, in an installed build. Linux has no login item an app may set: there the desktop owns its own startup list |
 | Quit Guya | Stops the app; shown where there is no menu bar, since closing the window only hides it |
 
 ## Troubleshooting
@@ -143,6 +143,7 @@ the app no menu bar.
 | The shortcut does nothing | Another app already owns that combination. The recorder says the app is not holding it, the settings row says the same, and choosing another one takes one press — while you are choosing, the app hands the keys back so the field can hear them. |
 | Paste automatically does nothing on Windows | Windows blocks typing into windows that run as administrator. Run Guya as administrator as well, or paste by hand (the transcript is already on the clipboard). |
 | Paste automatically does nothing | macOS has two permissions for this and the app offers the pane it actually needs: **Accessibility** to send keystrokes, and — the first time — **Automation**, to let Guya drive System Events. If the transcript is on screen in Guya's own window, nothing is typed: there is nowhere sensible to type it. |
+| Nothing is typed, on Linux | No automatic-paste helper is installed — `xdotool` on X11, or `ydotool` or `wtype` on Wayland. The settings row says so, and the transcript is on the clipboard either way. |
 | The orb is a black box, or not at the top (Linux) | The orb needs a compositor that supports transparent windows, and on Wayland the desktop may ignore the position the app asks for. The transcript and the recording itself are not affected. |
 | The transcript is empty but I spoke | The recording was quiet enough that the model heard nothing. *Stop after silence* and the input level in the recorder are the things to check. |
 
@@ -179,7 +180,8 @@ src/preload/    the bridge between the renderers and the main process
 src/renderer/   the panel (recorder + settings) and the floating overlay
 src/shared/     code both processes use: audio, the dictionary, the prompt,
                 the shortcut parser, the bidi rules
-scripts/        the icon generator, the release script, the structure gate
+scripts/        the icon generator, the release script and its publish step, the
+                release notes, the local installer, the structure gate
 ```
 
 The main process is split by responsibility — `index.js` wires, `recorder.js` owns a
