@@ -81,8 +81,10 @@ function openExternal(what) {
 }
 
 /* Typing into another app is a keystroke through the OS, and each system exposes
- * it differently: AppleScript on macOS, SendKeys on Windows, and on Linux a small
- * helper the user installs. X11 has xdotool; Wayland has ydotool and wtype. */
+ * it differently: AppleScript on macOS, PowerShell and `keybd_event` on Windows, and
+ * on Linux a small helper the user installs. X11 has xdotool; Wayland has ydotool and
+ * wtype. Every one of them sends a key rather than a character — a character is
+ * translated by whatever keyboard layout is active. */
 const LINUX_TOOLS = [
   { name: 'xdotool', session: 'x11', args: ['key', '--clearmodifiers', 'ctrl+v'] },
   { name: 'ydotool', session: 'wayland', args: ['key', '29:1', '47:1', '47:0', '29:0'] },
