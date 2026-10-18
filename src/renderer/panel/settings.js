@@ -412,8 +412,10 @@ function beginShortcutCapture() {
   F.shortcut.classList.add('capturing');
   setShortcutHint('');
   /* Stop the system handing this app the keys it already holds: otherwise the user presses
-   * the combination they can see, the app consumes it, and the field never hears a thing. */
-  if (api.suspendShortcutCapture) api.suspendShortcutCapture(true).catch(() => {});
+   * the combination they can see, the app consumes it, and the field never hears a thing.
+   * Not guarded by a truth test on the bridge: a bridge method that is missing throws here,
+   * which is a bug someone can see, rather than a click that does nothing. */
+  api.suspendShortcutCapture(true).catch(() => {});
   renderShortcut();
 }
 
@@ -421,7 +423,7 @@ function endShortcutCapture() {
   if (!capturingShortcut) return;
   capturingShortcut = false;
   F.shortcut.classList.remove('capturing');
-  if (api.suspendShortcutCapture) api.suspendShortcutCapture(false).catch(() => {});
+  api.suspendShortcutCapture(false).catch(() => {});
   renderShortcut();
   renderShortcutNotice();
 }
@@ -568,8 +570,11 @@ function initSettings() {
   on(F.shortcut, 'blur', endShortcutCapture);
   on(F.shortcut, 'keydown', onShortcutKeyDown);
   on(F.refreshModels, 'click', refreshModels);
-  on(F.openKeyPage, 'click', () => {
-    if (api.openExternal) api.openExternal('aistudio');
+  on(F.openKeyPage, 'click', async () => {
+    /* Not guarded by `if (api.openExternal)`: a bridge method that is missing is a bug, and
+     * a bug that swallows the click looks exactly like a link that does not work. */
+    const opened = await api.openExternal('aistudio');
+    if (opened && opened.ok === false) setFormStatus('error.openFailed', 'warn');
   });
 
   on(F.pasteAfterTranscribe, 'change', async () => {
@@ -618,7 +623,7 @@ window.__refreshSettings = async function refreshSettings() {
   /* Opening this screen is the moment to ask the system for the shortcut again: the
    * combination may have been taken when the app started and given back since, and this is
    * where the answer is shown. The main process pushes the new state, which repaints. */
-  if (api.retryShortcut) api.retryShortcut().catch(() => {});
+  api.retryShortcut().catch(() => {});
   try {
     applyPasteSupport(await api.pasteSupport());
     if (!pasteSupport.supported) {

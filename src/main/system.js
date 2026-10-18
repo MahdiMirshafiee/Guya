@@ -76,6 +76,7 @@ const AI_STUDIO_URL = 'https://aistudio.google.com/apikey';
 
 function openExternal(what) {
   if (what !== 'aistudio') return Promise.resolve({ ok: false });
+  if (process.env.GUYA_DEBUG) console.log('[guya] opening the key page');
   return shell.openExternal(AI_STUDIO_URL);
 }
 

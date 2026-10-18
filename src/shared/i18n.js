@@ -85,6 +85,10 @@
       en: 'That shortcut is taken by another app.'
     },
     'error.shortcutInvalid': { fa: 'این ترکیب کلید معتبر نیست.', en: 'That shortcut is not valid.' },
+    'error.openFailed': {
+      fa: 'باز کردن آن صفحه در مرورگر ممکن نشد.',
+      en: 'That page could not be opened in your browser.'
+    },
     'error.loginItemPackagedOnly': { fa: 'این گزینه فقط در نسخه نصب‌شده کار می‌کند.', en: 'This option only works in the installed app.' },
     'error.loginItemUnsupported': {
       fa: 'اجرا هنگام ورود در لینوکس از تنظیمات خود میزکار انجام می‌شود، پس این گزینه اینجا کار نمی‌کند.',

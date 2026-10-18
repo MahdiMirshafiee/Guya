@@ -100,6 +100,20 @@ function register() {
     return { ok: true };
   });
 
+  /* The one page the window may send the user to: where a Gemini key comes from. The
+   * handler was written but never landed with the block that calls it, so the button
+   * quietly did nothing — the renderer's bridge method did not exist, and the caller
+   * guarded the call with `if (api.openExternal)`. */
+  ipcMain.handle('system:open-external', async (_event, what) => {
+    try {
+      await systemIntegration.openExternal(what);
+      return { ok: true };
+    } catch (err) {
+      console.warn('[guya] could not open that page:', err && err.message);
+      return { ok: false, errorKey: 'error.openFailed' };
+    }
+  });
+
   ipcMain.handle('system:open-privacy', async (_event, kind) => {
     /* Opening a pane is the system's job and it can refuse — a URI handler that is not
      * registered, a desktop with no settings app. The promise used to be dropped, and an

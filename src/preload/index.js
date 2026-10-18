@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('guya', {
   cancelRecording: () => ipcRenderer.invoke('recording:cancel'),
   copyToClipboard: (text) => ipcRenderer.invoke('clipboard:copy', text),
   openPrivacySettings: (kind) => ipcRenderer.invoke('system:open-privacy', kind),
+  openExternal: (what) => ipcRenderer.invoke('system:open-external', what),
   quit: () => ipcRenderer.invoke('app:quit'),
   suspendShortcutCapture: (suspended) => ipcRenderer.invoke('shortcut:suspend-capture', suspended),
   retryShortcut: () => ipcRenderer.invoke('shortcut:retry'),

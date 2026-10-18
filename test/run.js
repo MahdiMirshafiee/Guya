@@ -1685,6 +1685,37 @@ test('listModels drops what cannot transcribe, and reads every page', async () =
   assert.ok(/pageToken=page-2/.test(pages[1]), 'the second page was asked for: ' + pages[1]);
 });
 
+test('every channel the window calls has a handler, and every handler a caller', () => {
+  /* The bug this exists for: the window's "Get a key" button called a bridge method that
+   * had never been added — the handler was written and its edit was lost — and the button
+   * did nothing at all, silently, for a release. The crossing is two string tables, and
+   * nothing in the suite compared them. */
+  const preload = fs.readFileSync(path.join(__dirname, '..', 'src', 'preload', 'index.js'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'ipc.js'), 'utf8');
+  const channelsIn = (source, pattern) => {
+    const found = new Set();
+    let match = pattern.exec(source);
+    while (match) {
+      found.add(match[1]);
+      match = pattern.exec(source);
+    }
+    return found;
+  };
+
+  const called = channelsIn(preload, /ipcRenderer\.(?:invoke|send)\(\s*'([^']+)'/g);
+  const handled = new Set([
+    ...channelsIn(main, /ipcMain\.handle\(\s*'([^']+)'/g),
+    ...channelsIn(main, /ipcMain\.on\(\s*'([^']+)'/g)
+  ]);
+
+  assert.ok(called.size >= 15, 'the preload bridge should expose the app\'s calls: ' + called.size);
+  const missing = [...called].filter((channel) => !handled.has(channel)).sort();
+  assert.deepStrictEqual(missing, [], 'the window calls channels nobody handles: ' + missing.join(', '));
+
+  const unused = [...handled].filter((channel) => !called.has(channel)).sort();
+  assert.deepStrictEqual(unused, [], 'the app handles channels nobody calls: ' + unused.join(', '));
+});
+
 test('no user-visible string is hardcoded', () => {
   const root = path.join(__dirname, '..');
   /* Every source file except the dictionary itself. */

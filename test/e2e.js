@@ -617,6 +617,13 @@ class Cdp {
     };
   })()`);
   check('the way to a key sits on the key field\'s own line', howto.onTheLabelLine && howto.label.length > 0, JSON.stringify(howto));
+
+  /* And it does something when it is pressed: the call crosses to the main process, which
+   * is the part that was missing while the button looked wired. Opening the page is the
+   * point of the click, so the app says so in its log. */
+  await panel.eval(`document.getElementById('openKeyPage').click()`);
+  const asked = await waitFor(async () => (/\[guya\] opening the key page/.test(appLog()) ? true : null), 4000, 'the app to be asked to open the page').catch(() => false);
+  check('pressing it asks the app to open the page', asked === true);
   check('and the three steps are the group\'s footnote, not a block inside it', howto.steps === 3 && howto.inTheFootnoteSlot && howto.afterTheGroup, JSON.stringify(howto));
 
   /* A refused combination answers beside the field. The sentence used to go to the form's
