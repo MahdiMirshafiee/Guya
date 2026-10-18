@@ -600,20 +600,24 @@ class Cdp {
 
   check('the shortcut is drawn as key caps', (await panel.eval(`document.querySelectorAll('#shortcut kbd').length`)) >= 2);
 
-  /* Where a key comes from, in the window that asks for one: three steps and a way to the
-   * page, closed until asked for. */
+  /* Where a key comes from: the action on the field's own label line, the words in the
+   * group's footnote. It used to be a block between two rows of the group, which pushed the
+   * model row away from the key row it belongs with. */
   const howto = await panel.eval(`(() => {
-    const box = document.getElementById('keyHelp');
+    const link = document.getElementById('openKeyPage');
+    const steps = document.getElementById('keyHelp');
+    const head = link.parentElement;
+    const group = document.querySelector('#view-settings .group');
     return {
-      closed: !box.open,
-      summary: box.querySelector('summary').textContent.trim(),
-      steps: box.querySelectorAll('li').length,
-      button: document.getElementById('openKeyPage').textContent.trim(),
-      afterKeyField: box.previousElementSibling.contains(document.getElementById('apiKey'))
+      onTheLabelLine: head.classList.contains('stack-head') && head.querySelector('label').htmlFor === 'apiKey',
+      label: link.textContent.trim(),
+      steps: steps.querySelectorAll('li').length,
+      inTheFootnoteSlot: !group.contains(steps) && steps.classList.contains('footnote'),
+      afterTheGroup: group.compareDocumentPosition(steps) === Node.DOCUMENT_POSITION_FOLLOWING
     };
   })()`);
-  check('the window says where a key comes from', howto.closed && howto.summary === i18n.t('fa', 'ui.keyHelpSummary'), JSON.stringify(howto));
-  check('in three steps, next to the field that wants one', howto.steps === 3 && howto.afterKeyField && howto.button.length > 0, JSON.stringify(howto));
+  check('the way to a key sits on the key field\'s own line', howto.onTheLabelLine && howto.label.length > 0, JSON.stringify(howto));
+  check('and the three steps are the group\'s footnote, not a block inside it', howto.steps === 3 && howto.inTheFootnoteSlot && howto.afterTheGroup, JSON.stringify(howto));
 
   /* A refused combination answers beside the field. The sentence used to go to the form's
    * status line — the last element of a scrolling form — so pressing keys looked like

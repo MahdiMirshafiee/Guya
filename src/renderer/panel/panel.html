@@ -74,8 +74,13 @@
       <main class="form">
         <h2 class="section-title" data-i18n="ui.engineName"></h2>
         <div class="group">
+          <!-- The field's label shares its line with the action that gets one, the way
+               every other field with an action does. -->
           <div class="stack">
-            <label for="apiKey" data-i18n="ui.apiKey"></label>
+            <div class="stack-head">
+              <label for="apiKey" data-i18n="ui.apiKey"></label>
+              <button id="openKeyPage" class="btn-quiet" type="button" data-i18n="ui.keyHelpOpen"></button>
+            </div>
             <div class="stack-control">
               <input id="apiKey" type="password" dir="ltr" autocomplete="off" spellcheck="false" data-i18n-placeholder="ui.apiKeyExample" />
               <button id="toggleKey" class="icon-btn" type="button">
@@ -83,17 +88,6 @@
               </button>
             </div>
           </div>
-          <!-- Where a key comes from, in three lines, where the field that wants one is.
-               Closed by default: the app is not a tutorial, and this is read once. -->
-          <details class="howto" id="keyHelp">
-            <summary data-i18n="ui.keyHelpSummary"></summary>
-            <ol class="howto-steps">
-              <li data-i18n="ui.keyHelpStep1"></li>
-              <li data-i18n="ui.keyHelpStep2"></li>
-              <li data-i18n="ui.keyHelpStep3"></li>
-            </ol>
-            <button id="openKeyPage" class="btn-quiet" type="button" data-i18n="ui.keyHelpOpen"></button>
-          </details>
 
           <div class="row">
             <span class="row-label" data-i18n="ui.model"></span>
@@ -106,6 +100,13 @@
             </div>
           </div>
         </div>
+        <!-- How to get one: the group's footnote, which is where this design puts the
+             words about a group — not a block in the middle of its rows. -->
+        <ol class="howto-steps footnote" id="keyHelp">
+          <li data-i18n="ui.keyHelpStep1"></li>
+          <li data-i18n="ui.keyHelpStep2"></li>
+          <li data-i18n="ui.keyHelpStep3"></li>
+        </ol>
         <p class="footnote" data-i18n="settings.engineFootnote"></p>
 
         <h2 class="section-title" data-i18n="ui.recording"></h2>

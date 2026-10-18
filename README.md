@@ -63,9 +63,9 @@ The builds are **not code-signed**, so the system will warn the first time:
 
 ## First run
 
-The settings screen opens when there is no key yet, and the field it wants has a
-three-line answer under it — *Where do I get an API key?* — with a button that opens
-<https://aistudio.google.com/apikey>.
+The settings screen opens when there is no key yet. The key field carries *Get a key* on
+its own line, which opens <https://aistudio.google.com/apikey>, and the three steps are
+written under the group.
 
 1. Paste a Gemini API key from <https://aistudio.google.com/apikey>.
 2. Press **Refresh models** and pick one. `gemini-2.5-flash` is a good default;
@@ -120,7 +120,7 @@ the app no menu bar.
 | --- | --- |
 | API key | Your Gemini key, stored encrypted on this machine |
 | Model | The four this app is built against, or the whole list from *Refresh models*; can also be typed |
-| Where do I get an API key? | Under the key field: three steps and a button that opens Google AI Studio |
+| Where do I get an API key? | *Get a key* on the key field's own line opens Google AI Studio, and the three steps are under the group |
 | Spoken language | Auto-detect, or one language for more accuracy |
 | Stop after silence | Off, or 1–120 seconds (3 by default) |
 | Stop if nobody speaks | Off, or 1–120 seconds (8 by default) |
