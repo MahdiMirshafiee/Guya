@@ -135,6 +135,10 @@ function getPanel() {
 }
 
 function showPanel() {
+  /* The one thing about a window that is worth being able to read from outside it: that the
+   * app asked for it. Whether the system then draws it where it can be seen is the system's
+   * business — and on a desktop somebody is working on, another window can cover it. */
+  if (process.env.GUYA_DEBUG) console.log('[guya] panel shown');
   const win = getPanel();
   if (win.isMinimized()) win.restore();
   win.show();
