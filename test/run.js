@@ -817,6 +817,11 @@ test('display formats per platform', () => {
   GuyaAccelerator.setPlatform('win32');
   assert.strictEqual(GuyaAccelerator.display('CommandOrControl+Shift+Space'), 'Ctrl+Shift+Space');
   assert.strictEqual(GuyaAccelerator.display('Alt+F9'), 'Alt+F9');
+  assert.strictEqual(GuyaAccelerator.display('Super+Space'), 'Win+Space', 'the Windows key is called Win there');
+  /* And on Linux it is Super: the same key, named the way that desktop names it. */
+  GuyaAccelerator.setPlatform('linux');
+  assert.strictEqual(GuyaAccelerator.display('Super+Space'), 'Super+Space');
+  GuyaAccelerator.setPlatform(process.platform);
 });
 
 /* ============================================================== store ==== */

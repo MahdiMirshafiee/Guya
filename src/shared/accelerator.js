@@ -212,7 +212,7 @@
     return modifiers.concat(keys).map(function (part) {
       if (mac) return TYPED_NAMES[part] || part;
       if (part === 'CommandOrControl' || part === 'Control' || part === 'Ctrl') return 'Ctrl';
-      if (part === 'Command' || part === 'Super') return 'Win';
+      if (part === 'Command' || part === 'Super') return IS_WINDOWS ? 'Win' : 'Super';
       if (part === 'Return') return 'Enter';
       return part;
     });
