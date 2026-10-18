@@ -68,7 +68,7 @@ its own line, which opens <https://aistudio.google.com/apikey>, and the three st
 written under the group.
 
 1. Paste a Gemini API key from <https://aistudio.google.com/apikey>.
-2. Press **Refresh models** and pick one. `gemini-2.5-flash` is a good default;
+2. Press **Refresh models** and pick one;
    `flash-lite` is faster, `flash` is more accurate for Persian.
 3. Press **Test key** to check it before you rely on it.
 
