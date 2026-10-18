@@ -41,6 +41,40 @@ jobs:
       - run: npm ci
       - run: npm run e2e
 
+  # The same suite on the other two systems, which is the only way the interface those
+  # users see is ever exercised: what the window looks like, what the status line says, and
+  # which pane a refusal offers were all macOS-only knowledge until these jobs existed.
+  # Non-blocking for now: a first run that fails for a reason that is not the app (a runner
+  # without a window manager, a focus it will not give) is information, not a broken build.
+  e2e-linux:
+    name: end-to-end (Linux)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Chromium's sandbox needs unprivileged user namespaces, which AppArmor refuses on
+      # this runner by default — and the app itself is never given `--no-sandbox`.
+      - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - run: xvfb-run --auto-servernum npm run e2e
+
+  e2e-windows:
+    name: end-to-end (Windows)
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run e2e
+
   package:
     name: package check (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
