@@ -135,7 +135,7 @@ function register() {
   /* The app may have been started with the combination held by something else, and there
    * is nothing the user can press to find out that it is free again. */
   ipcMain.handle('shortcut:retry', () => {
-    const result = shortcutApi.retry();
+    const result = shortcutApi.ensureHeld();
     state_.pushPanel();
     return result;
   });

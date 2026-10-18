@@ -37,7 +37,7 @@ const ipc = require('./ipc');
  * how the window is brought back — and because a key that was taken when the app started is
  * worth asking for again by then. */
 function showWindow() {
-  shortcutApi.retry();
+  shortcutApi.ensureHeld();
   state_.pushPanel();
   windows.showPanel();
 }
@@ -112,6 +112,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     app.isQuitting = true;
     recorder.clearTimers();
+    shortcutApi.stopWatching();
     globalShortcut.unregisterAll();
   });
 

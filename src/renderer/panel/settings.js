@@ -411,6 +411,11 @@ function beginShortcutCapture() {
   capturingShortcut = true;
   F.shortcut.classList.add('capturing');
   setShortcutHint('');
+  /* The keys are read from this element, so this element has to hold the keyboard. The row
+   * is the click target — the chips are a few characters wide — and a click on the row's
+   * label leaves the focus on the body, where the listener above never fires: the field
+   * says "press keys" and then hears nothing at all. */
+  F.shortcut.focus();
   /* Stop the system handing this app the keys it already holds: otherwise the user presses
    * the combination they can see, the app consumes it, and the field never hears a thing.
    * Not guarded by a truth test on the bridge: a bridge method that is missing throws here,
@@ -427,6 +432,14 @@ function endShortcutCapture() {
   renderShortcut();
   renderShortcutNotice();
 }
+
+/* The ways a capture can be left behind: the window loses the keyboard, or is hidden, while
+ * the field is still waiting. Both leave the system told to hand this app nothing, and every
+ * global shortcut silently stops working for the rest of the session — so they end it. */
+on(window, 'blur', endShortcutCapture);
+on(document, 'visibilitychange', () => {
+  if (document.hidden) endShortcutCapture();
+});
 
 function onShortcutKeyDown(event) {
   if (!capturingShortcut) {

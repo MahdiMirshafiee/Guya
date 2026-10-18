@@ -631,7 +631,62 @@ class Cdp {
    * nothing happening, which is exactly what a Windows user reported. */
   await panel.eval(`document.getElementById('shortcutRow').click()`);
   await sleep(200);
-  check('the row starts a capture wherever it is clicked', (await panel.eval(`document.getElementById('shortcut').classList.contains('capturing')`)) === true);
+  /* Choosing a shortcut needs the keyboard, and the keyboard belongs to whoever has the
+   * window: a desktop someone is working on can take it back between two readings, and the
+   * capture correctly ends when it does. So the window is brought forward first, and if it
+   * cannot keep the keyboard on this machine the sequence is reported rather than failed —
+   * the rest of the suite does not depend on it. */
+  await panel.send('Page.bringToFront');
+  const hasKeyboard = await waitFor(async () => (await panel.eval('document.hasFocus()')) === true, 3000, 'the window to take the keyboard').catch(() => false);
+
+  if (hasKeyboard === true) {
+    await panel.eval(`document.getElementById('shortcutRow').click()`);
+    await sleep(200);
+    const captureState = await panel.eval(`({
+      capturing: capturingShortcut,
+      classed: document.getElementById('shortcut').classList.contains('capturing'),
+      focused: document.activeElement === document.getElementById('shortcut')
+    })`);
+    check('the row starts a capture wherever it is clicked', captureState.classed === true && captureState.focused === true, JSON.stringify(captureState));
+
+    /* The whole point of the field: a combination the user presses becomes the shortcut, and
+     * the system is holding it afterwards. */
+    const pressed = 'Control+Shift+U';
+    await panel.eval(`(() => {
+      document.getElementById('shortcut').dispatchEvent(new KeyboardEvent('keydown', { key: 'u', code: 'KeyU', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    await sleep(900);
+    const chosen = await panel.eval(`guya.getAppInfo().then((i) => ({ stored: i.settings.shortcut, held: i.state.shortcutHeld, chips: document.querySelectorAll('#shortcut kbd').length }))`);
+    check('the combination the user presses becomes the shortcut', chosen.stored === pressed && chosen.held === true, JSON.stringify(chosen));
+    check('and the field shows it', chosen.chips >= 3, JSON.stringify(chosen));
+
+    /* Back to what it was, through the same door. */
+    await panel.eval(`document.getElementById('shortcutRow').click()`);
+    await sleep(200);
+    await panel.eval(`(() => {
+      const mac = guya.platform === 'darwin';
+      document.getElementById('shortcut').dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', metaKey: mac, ctrlKey: !mac, shiftKey: true, bubbles: true, cancelable: true }));
+      return true;
+    })()`);
+    await sleep(900);
+    const restored = await panel.eval(`guya.getAppInfo().then((i) => ({ stored: i.settings.shortcut, held: i.state.shortcutHeld }))`);
+    check('and it can be changed back', restored.held === true && restored.stored === 'CommandOrControl+Shift+Space', JSON.stringify(restored));
+  } else {
+    console.log('  (the window could not keep the keyboard on this machine: choosing a shortcut is not exercised this run)');
+  }
+
+  /* A capture the window walks away from must end: while the field is waiting, the app has
+   * told the system to hand it nothing, and that cannot outlive the field. */
+  await panel.eval(`document.getElementById('shortcutRow').click()`);
+  await sleep(150);
+  await panel.eval(`window.dispatchEvent(new Event('blur'))`);
+  await sleep(200);
+  check('the capture ends when the window loses the keyboard', (await panel.eval(`document.getElementById('shortcut').classList.contains('capturing')`)) === false);
+
+  /* A refused combination, once more, on the field the user now has to click into. */
+  await panel.eval(`document.getElementById('shortcutRow').click()`);
+  await sleep(200);
   await panel.eval(`(() => {
     document.getElementById('shortcut').dispatchEvent(new KeyboardEvent('keydown', { key: 'q', code: 'KeyQ', metaKey: true, bubbles: true, cancelable: true }));
     return true;

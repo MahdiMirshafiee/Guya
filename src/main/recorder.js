@@ -188,6 +188,7 @@ function stopRecording() {
 }
 
 function onHotkey() {
+  if (process.env.GUYA_DEBUG) console.log(`[guya] the shortcut was pressed (phase: ${state.phase})`);
   const now = Date.now();
   if (now - lastKeyAt < HOTKEY_DEBOUNCE_MS) return;
   lastKeyAt = now;

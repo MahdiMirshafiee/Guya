@@ -127,7 +127,7 @@ the app no menu bar.
 | Attempts | Tries per transcription, the first one included (3 by default) |
 | System prompt | The instructions sent with every recording; editable, and resettable |
 | Copy to clipboard | Copy the transcript when it arrives |
-| Paste automatically | Type it into the focused app (needs macOS Accessibility) |
+| Paste automatically | Type it into the focused app (needs macOS Accessibility; on Windows it uses the system's own scripting) |
 | Launch at login | Start the app when you sign in (installed builds only) |
 | Quit Guya | Stops the app; shown where there is no menu bar, since closing the window only hides it |
 
@@ -139,8 +139,10 @@ the app no menu bar.
 | "No Gemini API key yet." | Add one in the settings screen. |
 | "Quota reached. Try again in about N seconds." | The provider's rate limit. The app tells you the wait it was given instead of retrying into it. |
 | "This model is not available for your key." | The model was removed or is not enabled for that key: press *Refresh models* and pick another. |
+| The shortcut stopped working mid-recording | Another app took the combination; the app checks the key while it is recording and takes it again by itself. |
 | The shortcut does nothing | Another app already owns that combination. The recorder says the app is not holding it, the settings row says the same, and choosing another one takes one press — while you are choosing, the app hands the keys back so the field can hear them. |
 | Paste automatically does nothing | macOS has two permissions for this and the app offers the pane it actually needs: **Accessibility** to send keystrokes, and — the first time — **Automation**, to let Guya drive System Events. If the transcript is on screen in Guya's own window, nothing is typed: there is nowhere sensible to type it. |
+| "Automatic paste failed." on Windows | Something on the machine blocked both in-box helpers (`mshta` and PowerShell). The transcript is still on the clipboard — paste it by hand, or switch that setting off. |
 | The transcript is empty but I spoke | The recording was quiet enough that the model heard nothing. *Stop after silence* and the input level in the recorder are the things to check. |
 
 ## Building from source

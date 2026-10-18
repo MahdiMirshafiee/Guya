@@ -54,10 +54,12 @@ const shortcutHandlers = new Map();
 const foreignShortcuts = new Set();
 fakeElectron.globalShortcut = {
   register: (accelerator, handler) => {
+    fakeElectron.globalShortcut.registerCalls++;
     if (shortcutHandlers.has(accelerator) || foreignShortcuts.has(accelerator)) return false;
     shortcutHandlers.set(accelerator, handler);
     return true;
   },
+  registerCalls: 0,
   unregister: (accelerator) => shortcutHandlers.delete(accelerator),
   unregisterAll: () => shortcutHandlers.clear(),
   isRegistered: (accelerator) => shortcutHandlers.has(accelerator),
@@ -1050,6 +1052,18 @@ test('the settings the system will not honour are refused, not stored', async ()
   }
 });
 
+test('the Windows paste helpers are in-box, fast first, and send Ctrl+V', () => {
+  /* Windows pastes through the system's own scripting: going straight to PowerShell cost
+   * about a second of startup before the keystroke, which is long enough for the caret to be
+   * somewhere else, and a machine that blocks PowerShell had no paste at all. */
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'system.js'), 'utf8');
+  const helpers = source.slice(source.indexOf('WINDOWS_PASTE_HELPERS'), source.indexOf('function pasteSupport'));
+  assert.ok(/tool: 'mshta'/.test(helpers), 'mshta first: milliseconds, and no execution policy');
+  assert.ok(/tool: 'powershell'/.test(helpers), 'with PowerShell behind it');
+  assert.ok(/vbscript:Execute\(/.test(helpers) && /SendKeys ""\^v""/.test(helpers), 'and the whole keystroke in its argument: ' + helpers.split('args:')[1].slice(0, 80));
+  assert.ok(/SendKeys\('\^v'\)/.test(helpers), 'the fallback sends the same one');
+});
+
 test('every helper carries the keystroke it needs', () => {
   ['xdotool', 'ydotool', 'wtype'].forEach((name) => {
     const tool = systemIntegration.choosePasteTool([name], false);
@@ -1092,9 +1106,11 @@ test('the paste path is chosen per platform, from what is actually installed', (
     }
   };
 
-  /* macOS and Windows have the tool built in. */
+  /* macOS and Windows have the tool built in. On Windows it is mshta first — milliseconds
+   * where PowerShell takes about a second, and unaffected by an execution policy — with
+   * PowerShell kept behind it. */
   assert.deepStrictEqual(pasteSupportOn('darwin', ''), { supported: true, tool: 'osascript' });
-  assert.deepStrictEqual(pasteSupportOn('win32', ''), { supported: true, tool: 'powershell' });
+  assert.deepStrictEqual(pasteSupportOn('win32', ''), { supported: true, tool: 'mshta' });
 
   /* Linux has none of its own, so what is installed decides. */
   assert.deepStrictEqual(pasteSupportOn('linux', binDir), { supported: false, tool: null }, 'an empty bin directory has no helper');
@@ -2040,6 +2056,42 @@ test('the shortcut the system is given starts a recording', async () => {
   assert.ok(await settle(() => state.phase === 'starting'), 'with a key it starts listening');
   assert.ok(windowCalls.indexOf('overlay:start') !== -1, 'and the overlay is told to start');
   assert.strictEqual(state.lastErrorKey, '');
+});
+
+test('a shortcut the system lost is taken again, without being asked', () => {
+  /* The user's half of a recording is one key pressed twice, and there is nothing they can
+   * press to find out that the app stopped holding it: another app taking the combination
+   * for a while, a session change, a suspension that ended badly. It comes back by itself,
+   * and the app only pays a lookup when nothing is wrong. */
+  const shortcuts = require('../src/main/shortcuts.js');
+  const state = require('../src/main/state').state;
+  const ACCEL = 'CommandOrControl+Shift+J';
+  assert.strictEqual(shortcuts.registerShortcut(ACCEL).ok, true);
+  assert.strictEqual(shortcuts.ensureHeld().held, true, 'it is held');
+  const before = fakeElectron.globalShortcut.registerCalls;
+  assert.strictEqual(shortcuts.ensureHeld().held, true);
+  assert.strictEqual(fakeElectron.globalShortcut.registerCalls, before, 'and asking again costs nothing');
+
+  /* Simulate the loss: the system no longer has it, while the app still thinks it does. */
+  shortcutHandlers.delete(ACCEL);
+  const regained = shortcuts.ensureHeld();
+  assert.strictEqual(regained.held, true, 'it is taken again');
+  assert.strictEqual(regained.regained, true, 'and the caller can tell it had been lost');
+  assert.strictEqual(shortcutHandlers.has(ACCEL), true, 'the system is holding it');
+  assert.strictEqual(state.shortcutHeld, true, 'and the window is told the truth');
+
+  /* Nothing configured is a state of its own, not a loss to repair. */
+  store.update({ shortcut: '' });
+  shortcuts.registerShortcut('');
+  assert.deepStrictEqual(shortcuts.ensureHeld(), { ok: true, held: false });
+
+  /* Put back what this test found: the next one asserts that Escape is held while the
+   * microphone is opening, which is a state of the phase, and clearing the registrations
+   * here took that with it. */
+  store.update({ shortcut: 'CommandOrControl+Shift+Space' });
+  const { setPhase } = require('../src/main/state');
+  setPhase('idle');
+  setPhase('starting');
 });
 
 test('the keys are handed back to the user while they are choosing one', () => {

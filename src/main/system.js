@@ -111,10 +111,30 @@ function choosePasteTool(available, wayland) {
   return LINUX_TOOLS.find((tool) => tool.name === name) || null;
 }
 
+/* Windows: the two ways the system itself can be asked for one keystroke, fastest first.
+ *
+ * `mshta` runs the same `WScript.Shell.SendKeys` as PowerShell does, starts in milliseconds
+ * where PowerShell takes about a second — and a second is long enough for the caret to be
+ * somewhere else — and is not affected by an execution policy that blocks PowerShell
+ * scripts. It is tried first, and PowerShell is kept as the fallback it always was. Both are
+ * in-box: nothing is installed for this. */
+const WINDOWS_PASTE_HELPERS = [
+  {
+    tool: 'mshta',
+    file: 'mshta.exe',
+    args: ['vbscript:Execute("CreateObject(""WScript.Shell"").SendKeys ""^v"":close")']
+  },
+  {
+    tool: 'powershell',
+    file: 'powershell.exe',
+    args: ['-NoProfile', '-NonInteractive', '-Command', "$ws = New-Object -ComObject WScript.Shell; $ws.SendKeys('^v')"]
+  }
+];
+
 /* What this machine can do, so the interface can say it instead of guessing. */
 function pasteSupport() {
   if (IS_MAC) return { supported: true, tool: 'osascript' };
-  if (IS_WIN) return { supported: true, tool: 'powershell' };
+  if (IS_WIN) return { supported: true, tool: WINDOWS_PASTE_HELPERS[0].tool };
   const available = LINUX_TOOLS.filter((tool) => commandExists(tool.name)).map((tool) => tool.name);
   const tool = choosePasteTool(available, !!process.env.WAYLAND_DISPLAY);
   return { supported: !!tool, tool: tool ? tool.name : null };
@@ -161,12 +181,27 @@ function pasteIntoActiveApp() {
     }
 
     if (IS_WIN) {
-      execFile(
-        'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-Command', "$ws = New-Object -ComObject WScript.Shell; $ws.SendKeys('^v')"],
-        { timeout: 5000, windowsHide: true },
-        (err) => resolve(err ? { ok: false, errorKey: 'error.pasteFailed' } : { ok: true })
-      );
+      const attempt = (index) => {
+        const helper = WINDOWS_PASTE_HELPERS[index];
+        if (!helper) {
+          /* Both are in-box, so this is a machine where neither could be run: a policy, a
+           * system file removed, a locked-down session. The window says the paste did not
+           * happen rather than leaving the user to wonder. */
+          if (process.env.GUYA_DEBUG) console.log('[guya] no paste helper could be run on this system');
+          return resolve({ ok: false, errorKey: 'error.pasteFailed' });
+        }
+        execFile(helper.file, helper.args, { timeout: 5000, windowsHide: true }, (err, _stdout, stderr) => {
+          if (!err) {
+            if (process.env.GUYA_DEBUG) console.log(`[guya] pasted with ${helper.tool}`);
+            return resolve({ ok: true, tool: helper.tool });
+          }
+          if (process.env.GUYA_DEBUG) {
+            console.log(`[guya] ${helper.tool} could not paste:`, String((stderr || '') + (err.message || '')).trim().slice(0, 200));
+          }
+          attempt(index + 1);
+        });
+      };
+      attempt(0);
       return;
     }
 
