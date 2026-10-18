@@ -91,8 +91,15 @@
   /* Bumped only when the field changes meaning, never when the wording above
    * improves: a bump replaces what the user has in the field, so a reworded
    * sentence would cost them their own edits. Revision 2 is the one where the
-   * field stopped being "your own vocabulary" and became the instructions. */
-  var PROMPT_REVISION = 2;
+   * field stopped being "your own vocabulary" and became the instructions.
+   *
+   * Revision 3 is a repair, and the only bump that is: a form that painted itself after
+   * the first edit instead of at load left the field empty until then, and the empty
+   * field was committed over the app's own text on the first click into it. Installs in
+   * that state have an empty field and the app's text recorded as what it once put
+   * there. Re-seeding puts the instructions back and keeps anything the user wrote
+   * underneath — the same merge as revision 2, for a different reason. */
+  var PROMPT_REVISION = 3;
 
   /* The one line that changes from recording to recording. It stays in English with
    * the rest of the instructions, and the language it names is always the audio's.

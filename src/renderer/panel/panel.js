@@ -394,6 +394,12 @@ setInterval(() => {
   appState = info.state;
   R.version.textContent = appState.version || info.version;
   if (info.platform === 'darwin') document.body.classList.add('is-mac');
+  /* The settings are here, and both scripts have to be able to say so: this one calls the
+   * settings script's paint below, and that script — which may not have run yet — paints
+   * on its own load when this flag is up. Whoever is last paints; without the flag, a
+   * fast answer from the main process won the race, the paint above found no hook to
+   * call, and the form stayed empty until something happened to save. */
+  window.__shellReady = true;
   applyAccent();
   sizeWaveform();
   applyI18n();

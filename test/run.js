@@ -1826,6 +1826,14 @@ test('the field is seeded, once, from whatever an install already had', () => {
     assert.strictEqual(reload({ prompt: 'Say only yes.', promptRevision: GuyaPrompt.PROMPT_REVISION }).prompt, 'Say only yes.');
     assert.strictEqual(reload({ prompt: '', promptRevision: GuyaPrompt.PROMPT_REVISION }).prompt, '', 'a deliberate clear is not undone');
 
+    /* An install from before this revision whose field is empty with the app's own text
+     * recorded as what it once put there: that is a form committing an empty field, not a
+     * person deciding to send no instructions. The instructions come back — and once they
+     * have, an empty field is a decision again (the assertion above). */
+    const wiped = reload({ prompt: '', promptSeeded: GuyaPrompt.DEFAULT_PROMPT, promptRevision: GuyaPrompt.PROMPT_REVISION - 1 });
+    assert.strictEqual(wiped.prompt, GuyaPrompt.DEFAULT_PROMPT, 'the instructions are put back');
+    assert.strictEqual(wiped.promptRevision, GuyaPrompt.PROMPT_REVISION);
+
     /* A field still holding the text the app put there follows a better default;
      * one the user has edited does not. This is what a release that improves the
      * wording relies on. */

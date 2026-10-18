@@ -431,9 +431,23 @@ function on(node, event, handler) {
 }
 
 /* Text fields commit when the user is done with them, never mid-keystroke, and they
- * commit only themselves: the form is not a document to be re-sent on every edit. */
+ * commit only themselves: the form is not a document to be re-sent on every edit.
+ *
+ * And a field the user has not typed in cannot commit at all. What is in a field is not
+ * evidence of what the user wants unless they put it there: a field still empty because
+ * the form had not been painted yet wrote that emptiness over the real value, which is
+ * how an API key and a system prompt were lost. */
 function commitOnBlur(input, after, patchOf) {
+  let edited = false;
+  on(input, 'input', () => {
+    edited = true;
+  });
   on(input, 'blur', async () => {
+    if (!edited) {
+      if (after) after();
+      return;
+    }
+    edited = false;
     await saveAndRepaint(patchOf ? patchOf() : undefined);
     if (after) after();
   });
@@ -586,9 +600,12 @@ window.__refreshSettings = async function refreshSettings() {
   if (!F.pasteNotice.hidden) watchForPastePermission();
 };
 
-/* This script loads after the shell, so wire up and paint as soon as it runs. */
+/* This script loads after the shell: wire up, and hand the shell these by reference. */
 initSettings();
-
-/* The shell runs first and calls these by reference. */
 window.__repaintSettings = repaintSettings;
 window.__renderFormStatus = renderSettingsStatus;
+
+/* The shell's own paint is one of the two ways this form is drawn, and it may have
+ * already happened — the shell awaits the settings, and that answer can arrive before
+ * this script does. If it has the data, draw now. */
+if (window.__shellReady) repaintSettings();
