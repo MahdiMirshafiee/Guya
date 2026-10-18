@@ -1052,16 +1052,28 @@ test('the settings the system will not honour are refused, not stored', async ()
   }
 });
 
-test('the Windows paste helpers are in-box, fast first, and send Ctrl+V', () => {
-  /* Windows pastes through the system's own scripting: going straight to PowerShell cost
-   * about a second of startup before the keystroke, which is long enough for the caret to be
-   * somewhere else, and a machine that blocks PowerShell had no paste at all. */
-  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'system.js'), 'utf8');
-  const helpers = source.slice(source.indexOf('WINDOWS_PASTE_HELPERS'), source.indexOf('function pasteSupport'));
-  assert.ok(/tool: 'mshta'/.test(helpers), 'mshta first: milliseconds, and no execution policy');
-  assert.ok(/tool: 'powershell'/.test(helpers), 'with PowerShell behind it');
-  assert.ok(/vbscript:Execute\(/.test(helpers) && /SendKeys ""\^v""/.test(helpers), 'and the whole keystroke in its argument: ' + helpers.split('args:')[1].slice(0, 80));
-  assert.ok(/SendKeys\('\^v'\)/.test(helpers), 'the fallback sends the same one');
+test('the Windows paste sends a virtual key, not a character', () => {
+  /* `SendKeys('^v')` types the *character* v, which the active keyboard layout has to
+   * translate: with a Persian layout there is no Latin v to translate and the paste never
+   * happens. The key itself travels instead, in a script that is passed base64-encoded so
+   * the quotes inside it cannot be mangled by argument quoting. */
+  const args = systemIntegration.windowsPasteArgs();
+  assert.ok(args.indexOf('-EncodedCommand') !== -1, 'the script travels encoded: ' + args.join(' '));
+  assert.strictEqual(args.indexOf('-Command'), -1, 'and not as an argument to be quoted');
+
+  const script = Buffer.from(args[args.length - 1], 'base64').toString('utf16le');
+  assert.ok(/0x56/.test(script), 'the V key is there');
+  assert.ok(/0x11/.test(script), 'the Control key is there');
+  assert.strictEqual(/SendKeys/.test(script), false, 'and nothing is typed as a character any more');
+  /* Control down, V down, V up, Control up — the order matters, a paste held down is not a
+   * paste, and a modifier left down is a stuck keyboard. */
+  const order = script.match(/keybd_event\(0x(11|56), 0, (0|2)/g) || [];
+  assert.deepStrictEqual(order, [
+    'keybd_event(0x11, 0, 0',
+    'keybd_event(0x56, 0, 0',
+    'keybd_event(0x56, 0, 2',
+    'keybd_event(0x11, 0, 2'
+  ]);
 });
 
 test('every helper carries the keystroke it needs', () => {
@@ -1106,11 +1118,9 @@ test('the paste path is chosen per platform, from what is actually installed', (
     }
   };
 
-  /* macOS and Windows have the tool built in. On Windows it is mshta first — milliseconds
-   * where PowerShell takes about a second, and unaffected by an execution policy — with
-   * PowerShell kept behind it. */
+  /* macOS and Windows have the tool built in. */
   assert.deepStrictEqual(pasteSupportOn('darwin', ''), { supported: true, tool: 'osascript' });
-  assert.deepStrictEqual(pasteSupportOn('win32', ''), { supported: true, tool: 'mshta' });
+  assert.deepStrictEqual(pasteSupportOn('win32', ''), { supported: true, tool: 'powershell' });
 
   /* Linux has none of its own, so what is installed decides. */
   assert.deepStrictEqual(pasteSupportOn('linux', binDir), { supported: false, tool: null }, 'an empty bin directory has no helper');

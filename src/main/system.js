@@ -111,30 +111,33 @@ function choosePasteTool(available, wayland) {
   return LINUX_TOOLS.find((tool) => tool.name === name) || null;
 }
 
-/* Windows: the two ways the system itself can be asked for one keystroke, fastest first.
+/* What Windows is asked for a paste.
  *
- * `mshta` runs the same `WScript.Shell.SendKeys` as PowerShell does, starts in milliseconds
- * where PowerShell takes about a second — and a second is long enough for the caret to be
- * somewhere else — and is not affected by an execution policy that blocks PowerShell
- * scripts. It is tried first, and PowerShell is kept as the fallback it always was. Both are
- * in-box: nothing is installed for this. */
-const WINDOWS_PASTE_HELPERS = [
-  {
-    tool: 'mshta',
-    file: 'mshta.exe',
-    args: ['vbscript:Execute("CreateObject(""WScript.Shell"").SendKeys ""^v"":close")']
-  },
-  {
-    tool: 'powershell',
-    file: 'powershell.exe',
-    args: ['-NoProfile', '-NonInteractive', '-Command', "$ws = New-Object -ComObject WScript.Shell; $ws.SendKeys('^v')"]
-  }
-];
+ * The keystroke is sent as a virtual-key code, not as a character: `WScript.Shell.SendKeys`
+ * — which is what this was — translates the `v` it is given through the *active keyboard
+ * layout*, so with a Persian (or any other non-Latin) layout there is no Latin `v` to
+ * translate and Ctrl+V never arrives. It is the same reason macOS uses key code 9 rather
+ * than `keystroke "v"`. `keybd_event` takes the key itself: 0x11 is Control, 0x56 is V, and
+ * the flag 2 is the key-up.
+ *
+ * The script travels base64-encoded (`-EncodedCommand`, UTF-16LE), which is also what keeps
+ * the double quotes inside it out of any argument quoting.
+ */
+function windowsPasteArgs() {
+  const script = [
+    'Add-Type -Namespace Guya -Name Keys -MemberDefinition \'[DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);\'',
+    '[Guya.Keys]::keybd_event(0x11, 0, 0, [UIntPtr]::Zero)',
+    '[Guya.Keys]::keybd_event(0x56, 0, 0, [UIntPtr]::Zero)',
+    '[Guya.Keys]::keybd_event(0x56, 0, 2, [UIntPtr]::Zero)',
+    '[Guya.Keys]::keybd_event(0x11, 0, 2, [UIntPtr]::Zero)'
+  ].join('; ');
+  return ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
+}
 
 /* What this machine can do, so the interface can say it instead of guessing. */
 function pasteSupport() {
   if (IS_MAC) return { supported: true, tool: 'osascript' };
-  if (IS_WIN) return { supported: true, tool: WINDOWS_PASTE_HELPERS[0].tool };
+  if (IS_WIN) return { supported: true, tool: 'powershell' };
   const available = LINUX_TOOLS.filter((tool) => commandExists(tool.name)).map((tool) => tool.name);
   const tool = choosePasteTool(available, !!process.env.WAYLAND_DISPLAY);
   return { supported: !!tool, tool: tool ? tool.name : null };
@@ -181,27 +184,16 @@ function pasteIntoActiveApp() {
     }
 
     if (IS_WIN) {
-      const attempt = (index) => {
-        const helper = WINDOWS_PASTE_HELPERS[index];
-        if (!helper) {
-          /* Both are in-box, so this is a machine where neither could be run: a policy, a
-           * system file removed, a locked-down session. The window says the paste did not
-           * happen rather than leaving the user to wonder. */
-          if (process.env.GUYA_DEBUG) console.log('[guya] no paste helper could be run on this system');
-          return resolve({ ok: false, errorKey: 'error.pasteFailed' });
+      execFile('powershell.exe', windowsPasteArgs(), { timeout: 5000, windowsHide: true }, (err, _stdout, stderr) => {
+        if (!err) {
+          if (process.env.GUYA_DEBUG) console.log('[guya] pasted with virtual-key codes');
+          return resolve({ ok: true, tool: 'powershell' });
         }
-        execFile(helper.file, helper.args, { timeout: 5000, windowsHide: true }, (err, _stdout, stderr) => {
-          if (!err) {
-            if (process.env.GUYA_DEBUG) console.log(`[guya] pasted with ${helper.tool}`);
-            return resolve({ ok: true, tool: helper.tool });
-          }
-          if (process.env.GUYA_DEBUG) {
-            console.log(`[guya] ${helper.tool} could not paste:`, String((stderr || '') + (err.message || '')).trim().slice(0, 200));
-          }
-          attempt(index + 1);
-        });
-      };
-      attempt(0);
+        if (process.env.GUYA_DEBUG) {
+          console.log('[guya] the paste keystroke could not be sent:', String((stderr || '') + (err.message || '')).trim().slice(0, 200));
+        }
+        resolve({ ok: false, errorKey: 'error.pasteFailed' });
+      });
       return;
     }
 
@@ -297,4 +289,4 @@ function openPrivacySettings(kind) {
   return Promise.resolve();
 }
 
-module.exports = { copy, pasteIntoActiveApp, pasteSupport, choosePasteTool, pasteFailureKey, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemRefusal, loginItemOptions, startedAtLogin, openExternal, HIDDEN_ARG };
+module.exports = { copy, pasteIntoActiveApp, pasteSupport, choosePasteTool, pasteFailureKey, accessibilityStatus, requestAccessibility, ensureMicrophoneAccess, openPrivacySettings, loginItem, loginItemRefusal, loginItemOptions, startedAtLogin, openExternal, windowsPasteArgs, HIDDEN_ARG };
