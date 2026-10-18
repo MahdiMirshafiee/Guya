@@ -690,12 +690,14 @@ class Cdp {
 
     /* The whole point of the field: a combination the user presses becomes the shortcut, and
      * the system is holding it afterwards. */
-    /* The app stores the portable accelerator, not the key the platform calls it: the
-     * primary modifier is CommandOrControl everywhere, and the suite asserted the macOS
-     * spelling on all three systems. */
+    /* The app stores the portable accelerator — the primary modifier is CommandOrControl
+     * everywhere — and which key that is depends on the system: Command on macOS, Control
+     * elsewhere. The suite pressed Control on all three, which on macOS stored `Control+…`
+     * and then asked why it was not `CommandOrControl+…`. */
     const pressed = 'CommandOrControl+Shift+U';
     await panel.eval(`(() => {
-      document.getElementById('shortcut').dispatchEvent(new KeyboardEvent('keydown', { key: 'u', code: 'KeyU', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+      const mac = guya.platform === 'darwin';
+      document.getElementById('shortcut').dispatchEvent(new KeyboardEvent('keydown', { key: 'u', code: 'KeyU', metaKey: mac, ctrlKey: !mac, shiftKey: true, bubbles: true, cancelable: true }));
       return true;
     })()`);
     await sleep(900);
@@ -703,17 +705,20 @@ class Cdp {
     check('the combination the user presses becomes the shortcut', chosen.stored === pressed && chosen.held === true, JSON.stringify(chosen));
     check('and the field shows it', chosen.chips >= 3, JSON.stringify(chosen));
 
-    /* Back to what it was, through the same door. */
+    /* And changed again, through the same door. A function key rather than the combination
+     * this app ships with: a runner's system may hold that one, and the app refusing a
+     * combination the machine owns is the behaviour working, not a check to fail. */
     await panel.eval(`document.getElementById('shortcutRow').click()`);
     await sleep(200);
+    const changed = 'CommandOrControl+Shift+F9';
     await panel.eval(`(() => {
       const mac = guya.platform === 'darwin';
-      document.getElementById('shortcut').dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', metaKey: mac, ctrlKey: !mac, shiftKey: true, bubbles: true, cancelable: true }));
+      document.getElementById('shortcut').dispatchEvent(new KeyboardEvent('keydown', { key: 'F9', code: 'F9', metaKey: mac, ctrlKey: !mac, shiftKey: true, bubbles: true, cancelable: true }));
       return true;
     })()`);
     await sleep(900);
     const restored = await panel.eval(`guya.getAppInfo().then((i) => ({ stored: i.settings.shortcut, held: i.state.shortcutHeld }))`);
-    check('and it can be changed back', restored.held === true && restored.stored === 'CommandOrControl+Shift+Space', JSON.stringify(restored));
+    check('and it can be changed again', restored.held === true && restored.stored === changed, JSON.stringify(restored));
   } else {
     console.log('  (the window could not keep the keyboard on this machine: choosing a shortcut is not exercised this run)');
   }
