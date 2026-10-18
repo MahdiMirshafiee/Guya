@@ -154,8 +154,8 @@ GITHUB_REPOSITORY=owner/Guya scripts/publish-release.sh v1.0.0 notes.md dist/*.d
 wants `GITHUB_REPOSITORY` because it also runs outside a checkout.
 
 `.github/workflows/ci.yml` runs the unit tests on all three systems, the
-end-to-end suite on macOS and — non-blocking until they are known to be stable — on
-Linux (under `xvfb-run`) and Windows, and packages all three platforms on every push.
+end-to-end suite on all three (Linux under `xvfb-run`, with the shared libraries Electron
+links against installed by the job), and packages all three platforms on every push.
 
 The artifacts are unsigned unless `CSC_LINK`/`CSC_KEY_PASSWORD` (macOS) and the
 Windows equivalent are set as repository secrets; without them macOS shows the
