@@ -351,15 +351,30 @@ class Cdp {
   /* A meter made of one loudness number would light every bar by the same amount.
    * Chromium's fake device plays a steady tone, so a real spectrum has to put the
    * energy in the bands around that tone and leave the far ones alone. */
+  /* What Chromium's fake microphone plays differs by platform — a tone on macOS, something
+   * broader on the runners — and each band is normalised against its own floor, so a
+   * broadband signal lands in every band at once. What the app promises is that the bars are
+   * forty-eight bands and not one loudness number, and that is what is asserted: the picture
+   * is not flat. A tone is the strong case and is asserted as such where the tone is known. */
   const profile = await waitFor(async () => {
     const bars = await waveBars();
     const third = Math.floor(bars.length / 3);
     const low = Math.max.apply(null, bars.slice(0, third));
     const high = Math.max.apply(null, bars.slice(2 * third));
-    return low > 20 ? { low, high } : null;
+    const top = Math.max.apply(null, bars);
+    const bottom = Math.min.apply(null, bars.filter((h) => h > 0));
+    return top > 20 ? { low, high, top, bottom, spread: top / Math.max(1, bottom) } : null;
   }, 10000, 'a spectrum');
-  check('the bars are frequency bands, not one loudness number', profile.low > profile.high * 2,
-    JSON.stringify(profile));
+  console.log('  meter profile:', JSON.stringify(profile));
+  if (process.platform === 'darwin') {
+    check('a tone lands in the low bands, not spread over all of them', profile.low > profile.high * 2, JSON.stringify(profile));
+  } else {
+    check(
+      'the bars are bands, not one loudness number',
+      profile.top > 20 && (profile.low > profile.high * 2 || profile.spread >= 1.5),
+      JSON.stringify(profile)
+    );
+  }
   check('the button is stained while live', await panel.eval(`(() => {
     const s = getComputedStyle(document.getElementById('record'));
     const m = s.backgroundColor.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
@@ -792,7 +807,16 @@ class Cdp {
   const canPaste = tool.supported && afterAttempt.granted;
   console.log('  paste helper:', tool.tool || 'none', '| accessibility granted:', afterAttempt.granted, '| paste toggle:', paste.toggle, '| notice:', paste.notice);
   check('the setting follows what this machine can do', paste.toggle === canPaste, JSON.stringify({ tool, granted: afterAttempt.granted, toggle: paste.toggle }));
-  if (!canPaste) check('the refusal offers the system pane', paste.notice && paste.offersPane, JSON.stringify(paste));
+  /* Two refusals, two answers: without a helper the switch is off and cannot be turned on,
+   * and the sentence names the tool to install; without the permission the notice appears
+   * with the pane that fixes it. A Linux runner has neither xdotool nor ydotool, so it is
+   * the first of those. */
+  if (!tool.supported) {
+    const sentence = await panel.eval(`document.getElementById('settingsStatus').innerText.trim()`);
+    check('a machine with no helper says which one is missing', sentence === i18n.t('fa', 'settings.pasteNeedsTool') && paste.toggle === false, JSON.stringify({ sentence, toggle: paste.toggle }));
+  } else if (!afterAttempt.granted) {
+    check('the refusal offers the system pane', paste.notice && paste.offersPane, JSON.stringify(paste));
+  }
 
   /* The notice carries a sentence for each of its two states. It had one, written for the
    * refusal, so the granted state said the permission is required and the option stays off
