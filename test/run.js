@@ -739,6 +739,20 @@ test('punctuation and shifted punctuation are captured', () => {
   );
 });
 
+test('a window material is only claimed where the system draws one', () => {
+  /* Windows 11 22H2 (build 22621) is where acrylic exists. Below it the option is ignored,
+   * and a transparent window with no material behind it shows black through the page's own
+   * translucent tint — a light theme that looks like a grey film over a dark window. */
+  const { supportsWindowMaterial } = require('../src/main/platform.js');
+  assert.strictEqual(supportsWindowMaterial('10.0.22621'), true, '22H2 and up');
+  assert.strictEqual(supportsWindowMaterial('10.0.22631'), true);
+  assert.strictEqual(supportsWindowMaterial('10.0.19045'), false, 'Windows 10');
+  assert.strictEqual(supportsWindowMaterial('6.1.7601'), false, 'and older');
+  assert.strictEqual(supportsWindowMaterial(''), false, 'and anything unreadable');
+  assert.strictEqual(supportsWindowMaterial(undefined), false);
+  assert.strictEqual(supportsWindowMaterial('garbage'), false);
+});
+
 test('the combinations the system owns are refused per platform', () => {
   const press = (key, code, mods) =>
     GuyaAccelerator.fromKeyboardEvent(

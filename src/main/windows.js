@@ -6,8 +6,10 @@
 'use strict';
 
 const path = require('path');
+const os = require('os');
 const { BrowserWindow, screen, nativeTheme, app } = require('electron');
 const appProtocol = require('./protocol');
+const platform = require('./platform');
 
 const IS_MAC = process.platform === 'darwin';
 const IS_WIN = process.platform === 'win32';
@@ -15,6 +17,15 @@ const IS_WIN = process.platform === 'win32';
 const OVERLAY_WIDTH = 220;
 const OVERLAY_HEIGHT = 148;
 const OVERLAY_TOP_GAP = 18;
+
+/* A material is only visible through a transparent window background, so an opaque colour
+ * is what older Windows and Linux get instead — there is no material to show, and a
+ * transparent window with nothing behind it shows black through the page's own tint. */
+const HAS_MATERIAL = IS_WIN && platform.supportsWindowMaterial(os.release());
+
+function solidBackground() {
+  return nativeTheme.shouldUseDarkColors ? '#1c1c20' : '#f1f1f4';
+}
 
 let panelWin = null;
 let overlayWin = null;
@@ -48,7 +59,6 @@ function traceRenderer(win, label) {
 /* ---------------------------------------------------------------- panel ---- */
 
 function createPanel() {
-  const dark = nativeTheme.shouldUseDarkColors;
   panelWin = new BrowserWindow({
     width: 480,
     height: 800,
@@ -62,15 +72,14 @@ function createPanel() {
      * at a control. Without this the first one only focused the window, and the
      * control looked broken. */
     acceptFirstMouse: true,
-    /* Real desktop material behind the page: macOS vibrancy, Windows acrylic. A material
-     * is only visible through a transparent window background — with an opaque one the
-     * system's backdrop was drawn and then covered by the app's own colour, which is why
-     * the Windows window looked flat where the macOS one did not. Windows 11 22H2 and newer
-     * draw the material; older versions ignore the option and show the colour underneath,
-     * which is why there is still a colour. */
-    backgroundColor: IS_MAC || IS_WIN ? '#00000000' : dark ? '#1c1c20' : '#f1f1f4',
+    /* Real desktop material behind the page: macOS vibrancy, and acrylic on the Windows
+     * versions that draw it — both through a transparent background, because an opaque one
+     * covers the material the system painted behind it. Everywhere else the window is a
+     * solid colour under the page's own tint, which is what the light theme needs to look
+     * light rather than a grey film over black. */
+    backgroundColor: IS_MAC || HAS_MATERIAL ? '#00000000' : solidBackground(),
     ...(IS_MAC ? { vibrancy: 'under-window', visualEffectState: 'followWindow' } : {}),
-    ...(IS_WIN ? { backgroundMaterial: 'acrylic' } : {}),
+    ...(HAS_MATERIAL ? { backgroundMaterial: 'acrylic' } : {}),
     /* The window buttons stay out of the layout and appear when the pointer
      * reaches for them: nothing in the app has to reserve space for them. */
     titleBarStyle: IS_MAC ? 'customButtonsOnHover' : 'default',
@@ -88,6 +97,17 @@ function createPanel() {
   panelWin.webContents.on('render-process-gone', () => {
     if (panelWin && !panelWin.isDestroyed()) panelWin.reload();
   });
+
+  /* A solid colour is a colour the system can change under us: switching the appearance
+   * while the app runs leaves the window in the colour it was born with until it is
+   * reopened. */
+  if (!(IS_MAC || HAS_MATERIAL)) {
+    const repaint = () => {
+      if (panelWin && !panelWin.isDestroyed()) panelWin.setBackgroundColor(solidBackground());
+    };
+    nativeTheme.on('updated', repaint);
+    panelWin.once('closed', () => nativeTheme.removeListener('updated', repaint));
+  }
 
   /* Closing the window hides it, on every platform. The app's whole job is the
    * shortcut, and a shortcut that stops working because the window was closed is not a

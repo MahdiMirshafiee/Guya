@@ -4,6 +4,7 @@
 'use strict';
 
 const path = require('path');
+const os = require('os');
 const { app, nativeImage, systemPreferences } = require('electron');
 
 const IS_MAC = process.platform === 'darwin';
@@ -36,4 +37,17 @@ function applyDockIcon() {
   }
 }
 
-module.exports = { systemAccent, applyDockIcon, IS_MAC };
+/* Whether the system draws a window material (Windows acrylic) for a window whose
+ * background is transparent. Only Windows 11 22H2 and newer do: build 22621 is where the
+ * material was added, and below it the option is ignored and the page's own translucent
+ * tint would sit on black. Takes the string `os.release()` returns, e.g. '10.0.22631'.
+ * Pure, so it can be tested from a machine that is not Windows. */
+function supportsWindowMaterial(release) {
+  const parts = String(release || '').split('.');
+  if (parts.length < 3) return false;
+  const numbers = parts.slice(0, 3).map((part) => Number(part));
+  if (numbers.some((value) => !Number.isInteger(value) || value < 0)) return false;
+  return numbers[0] === 10 && numbers[1] === 0 && numbers[2] >= 22621;
+}
+
+module.exports = { systemAccent, applyDockIcon, supportsWindowMaterial, IS_MAC, HOST_RELEASE: os.release() };
