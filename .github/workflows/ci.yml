@@ -60,6 +60,9 @@ jobs:
       # Chromium's sandbox needs unprivileged user namespaces, which AppArmor refuses on
       # this runner by default — and the app itself is never given `--no-sandbox`.
       - run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      # A display, and the shared libraries Electron links against: without one of them the
+      # process exits before a window exists, and the suite can only report that it waited.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libnss3 libatk-bridge2.0-0 libgbm1 libasound2t64 libgtk-3-0
       - run: xvfb-run --auto-servernum npm run e2e
 
   e2e-windows:

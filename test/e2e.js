@@ -48,6 +48,9 @@ function check(label, ok, detail) {
 }
 
 const appLog = () => (fs.existsSync(LOG) ? fs.readFileSync(LOG, 'utf8') : '');
+/* The tail of what the app itself printed, for a failure that has to explain itself from a
+ * runner nobody can log into. */
+const appLogTail = (lines) => appLog().trim().split('\n').slice(-lines).map((line) => '    | ' + line).join('\n') || '    | (nothing)';
 
 /* A configured profile, so the app under test starts ready to record. */
 function seedProfile() {
@@ -104,7 +107,19 @@ async function waitForTargets(timeoutMs) {
     }
     await sleep(300);
   }
-  throw new Error('the app did not expose its renderers in time');
+  /* Saying what was there instead is the difference between "it did not start" and a log
+   * nobody can read: the CI job's output is all anyone gets from a runner. */
+  let seen = [];
+  try {
+    seen = (await listTargets()).map((t) => t.url.split('/').pop());
+  } catch (err) {
+    seen = ['(the debugging port never opened: ' + err.message + ')'];
+  }
+  throw new Error(
+    'the app did not expose its renderers in time — targets seen: ' + (seen.join(', ') || 'none') +
+      '; the app process is ' + (app && app.exitCode === null ? 'still running' : 'gone (exit ' + (app && app.exitCode) + ')') +
+      '; last lines of its log:\n' + appLogTail(12)
+  );
 }
 
 class Cdp {
@@ -855,7 +870,12 @@ class Cdp {
   check('and opening it again brings the window back', visibleAgain === true, visibleAgain);
   again.kill();
 
-  console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
+  if (failures) {
+    console.log(`\n${failures} check(s) failed — last lines of the app log:`);
+    console.log(appLogTail(25));
+  } else {
+    console.log('\nall checks passed');
+  }
 })()
   .catch((err) => {
     console.error('e2e error:', err.message);
