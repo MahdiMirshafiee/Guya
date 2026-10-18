@@ -141,8 +141,9 @@ the app no menu bar.
 | "This model is not available for your key." | The model was removed or is not enabled for that key: press *Refresh models* and pick another. |
 | The shortcut stopped working mid-recording | Another app took the combination; the app checks the key while it is recording and takes it again by itself. |
 | The shortcut does nothing | Another app already owns that combination. The recorder says the app is not holding it, the settings row says the same, and choosing another one takes one press — while you are choosing, the app hands the keys back so the field can hear them. |
+| Paste automatically does nothing on Windows | Windows blocks typing into windows that run as administrator. Run Guya as administrator as well, or paste by hand (the transcript is already on the clipboard). |
 | Paste automatically does nothing | macOS has two permissions for this and the app offers the pane it actually needs: **Accessibility** to send keystrokes, and — the first time — **Automation**, to let Guya drive System Events. If the transcript is on screen in Guya's own window, nothing is typed: there is nowhere sensible to type it. |
-| "Automatic paste failed." on Windows | Something on the machine blocked both in-box helpers (`mshta` and PowerShell). The transcript is still on the clipboard — paste it by hand, or switch that setting off. |
+| The orb is a black box, or not at the top (Linux) | The orb needs a compositor that supports transparent windows, and on Wayland the desktop may ignore the position the app asks for. The transcript and the recording itself are not affected. |
 | The transcript is empty but I spoke | The recording was quiet enough that the model heard nothing. *Stop after silence* and the input level in the recorder are the things to check. |
 
 ## Building from source

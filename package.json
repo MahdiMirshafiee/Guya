@@ -3,7 +3,7 @@
   "productName": "Guya",
   "version": "1.0.0",
   "private": true,
-  "description": "Minimal local voice-to-text utility (Gemini) for macOS and Windows",
+  "description": "Minimal local voice-to-text utility (Gemini) for macOS, Windows and Linux",
   "main": "src/main/index.js",
   "engines": {
     "node": ">=22"

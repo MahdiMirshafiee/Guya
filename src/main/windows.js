@@ -112,10 +112,10 @@ function createPanel() {
   /* Closing the window hides it, on every platform. The app's whole job is the
    * shortcut, and a shortcut that stops working because the window was closed is not a
    * background utility — on Windows and Linux, where the window is closed with the
-   * system's own button, that was exactly what happened. Quitting is the menu's job
-   * (`Ctrl+Q` while the window is open), or the settings screen's where there is no menu;
-   * opening the app again brings the window back, because a second launch asks the first
-   * one to show it.
+   * system's own button, that was exactly what happened. Quitting is the menu's job on
+   * macOS (`Cmd+Q`), and the **Quit Guya** button on the settings screen on Windows and
+   * Linux, which have no menu bar; opening the app again brings the window back, because a
+   * second launch asks the first one to show it.
    *
    * A page that closes itself is the one thing this cannot intercept, and it takes the
    * window with it — measured, not assumed. The app is what matters and the app stays:
